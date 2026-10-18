@@ -125,7 +125,7 @@ function applyRealState(rc) {
   state.layers.roads.name = 'Roads (OSM)';
   const L = state.layers; const keep = { ...L };
   for (const k of Object.keys(L)) delete L[k];
-  Object.assign(L, { terrain: keep.terrain, imagery: keep.imagery, scar: keep.scar, spread: keep.spread, cti: { on: true, op: 1, name: 'CTI: Fatalities · Command Post' }, closures: { on: false, op: 1, name: 'Road closures (CTI)' }, hotspots: { on: true, op: 1, name: 'Satellite Hotspots (VIIRS/MODIS)' }, munis: { on: false, op: 1, name: 'Municipal boundaries (OSM)' }, ign: keep.ign, wind: keep.wind, supp: keep.supp, structures: keep.structures, roads: keep.roads });
+  Object.assign(L, { terrain: keep.terrain, imagery: keep.imagery, scar: keep.scar, spread: keep.spread, cti: { on: true, op: 1, name: 'CTI: Fatalities · Command Post' }, closures: { on: false, op: 1, name: 'Road closures (CTI)' }, hotspots: { on: true, op: 1, name: 'Satellite Hotspots (VIIRS/MODIS)' }, munis: { on: false, op: 1, name: 'Municipal boundaries (OSM)' }, history: { on: false, op: 0.85, name: 'Fire history before 2017 (ICNF)' }, reburn: { on: false, op: 0.9, name: 'Burned again 2018–2025 (ICNF)' }, ign: keep.ign, wind: keep.wind, supp: keep.supp, structures: keep.structures, roads: keep.roads });
   L.supp.name = 'Air Drops (illustrative)';
   const TH = { Report: 'linear-gradient(135deg,#dfe4e8,#a9b2ba)', Paper: 'linear-gradient(135deg,#efe7da,#d8ccb9)', Data: 'linear-gradient(180deg,#e6eef3,#9fb7c8)', Sat: 'linear-gradient(135deg,#1b0638,#6a1b8a 45%,#f08c2b 75%,#fff2b0)' };
   state.evidence = [
@@ -671,7 +671,7 @@ export function setTime(t, force) {
 }
 app.setTime = setTime;
 function drawOverlay() {
-  overlay.draw({ time: state.time, map: U.uMap.value, layers: state.layers, perimeter, drops, lines, structures: world.structures, hotspots: app.real ? app.real.hotspots : null, munis: app.real?.analysis?.muniOutlines || null, lineVersion: 0, dropsVersion: state.dropsVersion });
+  overlay.draw({ time: state.time, map: U.uMap.value, layers: state.layers, perimeter, drops, lines, structures: world.structures, hotspots: app.real ? app.real.hotspots : null, munis: app.real?.analysis?.muniOutlines || null, history: app.real?.historyImg || null, reburn: app.real?.reburnImg || null, lineVersion: 0, dropsVersion: state.dropsVersion });
 }
 app.drawOverlay = drawOverlay;
 

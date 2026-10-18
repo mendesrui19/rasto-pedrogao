@@ -110,6 +110,11 @@ export class Overlay {
       ADMIN.forEach((p) => { this.path(p); c.setLineDash([this.m(160), this.m(60), this.m(20), this.m(60)]); c.strokeStyle = map ? 'rgba(120,80,150,0.8)' : 'rgba(200,170,230,0.85)'; c.lineWidth = this.m(map ? 22 : 28); c.stroke(); });
       c.restore();
     }
+    // raster layers baked by analysis.py (400² RGBA): fire history before 2017 and re-burn after it
+    for (const [key, img] of [['history', s.history], ['reburn', s.reburn]]) {
+      if (!L[key] || !L[key].on || !img) continue;
+      c.save(); c.globalAlpha = L[key].op; c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high'; c.drawImage(img, 0, 0, R, R); c.restore();
+    }
     if (MODE === 'real' && (L.roads.on || map)) {
       c.save(); c.globalAlpha = L.roads.on ? L.roads.op : 0.8;
       c.setLineDash([]);

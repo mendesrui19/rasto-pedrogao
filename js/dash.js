@@ -92,9 +92,13 @@ export const METRICS = {
         title: L('Temperature (°C) · RH (%)', 'Temperatura (°C) · HR (%)'), meta: `${nf(cur.temp)} °C · ${nf(cur.rh)}%`,
         cfg: { x: zoom ? X17zoom() : X17(), y: [0, 50], yTicks: [0, 25, 50], padL: 26, padR: 28, xTicks: zoom ? hourTicks() : dayTicks(), xFmt: fmtT, legend: !o.compact, spans: fireSpans(o.compact),
           y2: { range: [0, 100], ticks: [0, 50, 100], fmt: (v) => `${v}%`, color: COL.blue },
-          series: [{ pts: H.map((h) => [h.t, h.temp]), color: COL.red, label: L('Temp', 'Temp'), fmt: (v) => `${nf(v, 1)} °C`, splitAt: t }, { pts: H.map((h) => [h.t, h.rh]), color: COL.blue, axis: 2, label: L('RH', 'HR'), fmt: (v) => `${nf(v)}%`, splitAt: t }], cursor: t },
+          series: [{ pts: H.map((h) => [h.t, h.temp]), color: COL.red, label: L('Temp', 'Temp'), fmt: (v) => `${nf(v, 1)} °C`, splitAt: t }, { pts: H.map((h) => [h.t, h.rh]), color: COL.blue, axis: 2, label: L('RH', 'HR'), fmt: (v) => `${nf(v)}%`, splitAt: t },
+            ...(a.station ? [{ pts: a.station.obs.filter((o) => o.temp !== null).map((o) => [o.t, o.temp]), color: COL.red, width: 1, dashed: true, alpha: 0.75, label: L('Temp · Monte Real (obs.)', 'Temp · Monte Real (obs.)'), fmt: (v) => `${nf(v, 1)} °C` },
+              { pts: a.station.obs.filter((o) => o.rh !== null).map((o) => [o.t, o.rh]), color: COL.blue, width: 1, dashed: true, alpha: 0.75, axis: 2, label: L('RH · Monte Real', 'HR · Monte Real'), fmt: (v) => `${nf(v)}%`, noLegend: true }] : [])], cursor: t },
         insight: () => { const d17 = H.filter((h) => h.t >= 0 && h.t < 24); const mx = d17.reduce((b, h) => (h.temp > b.temp ? h : b)); const mn = d17.reduce((b, h) => (h.rh < b.rh ? h : b));
-          return L(`17 June: ${nf(mx.temp, 1)} °C at ${fmtHMm(mx.t)} and relative humidity down to ${nf(mn.rh)}% at ${fmtHMm(mn.t)} (ERA5). Hot, very dry air at ignition time.`, `17 de junho: ${nf(mx.temp, 1)} °C às ${fmtHMm(mx.t)} e humidade relativa até ${nf(mn.rh)}% às ${fmtHMm(mn.t)} (ERA5). Ar quente e muito seco à hora das ignições.`); },
+          const st = a.station ? a.station.obs.filter((o) => o.t >= 12 && o.t <= 18 && o.temp !== null) : []; const smx = st.length ? st.reduce((b, o) => (o.temp > b.temp ? o : b)) : null;
+          const sTxt = smx ? L(` The Monte Real station (60 km W, dashed) measured ${nf(smx.temp, 1)} °C and RH ${nf(smx.rh)}%: an independent confirmation of the hot, dry air mass.`, ` A estação de Monte Real (60 km a oeste, tracejado) mediu ${nf(smx.temp, 1)} °C e HR ${nf(smx.rh)}%: uma confirmação independente da massa de ar quente e seca.`) : '';
+          return L(`17 June: ${nf(mx.temp, 1)} °C at ${fmtHMm(mx.t)} and relative humidity down to ${nf(mn.rh)}% at ${fmtHMm(mn.t)} (ERA5).`, `17 de junho: ${nf(mx.temp, 1)} °C às ${fmtHMm(mx.t)} e humidade relativa até ${nf(mn.rh)}% às ${fmtHMm(mn.t)} (ERA5).`) + sTxt; },
       };
     },
   },
@@ -170,8 +174,25 @@ export const METRICS = {
       };
     },
   },
+  exposure: {
+    label: () => L('People & buildings reached', 'Pessoas e edifícios atingidos'),
+    build(o) {
+      const a = A(), t = app.state.time, E = a.exposure; const zoom = o.zoom;
+      const pmax = Math.ceil(E.popBurned / 1000) * 1000, bmax = Math.ceil(E.bldBurned / 500) * 500;
+      const cur = E.series.reduce((b, p) => (p[0] <= t ? p : b), E.series[0]);
+      return {
+        title: L('People · buildings inside the burned area', 'Pessoas · edifícios dentro da área ardida'), meta: `${nf(t >= E.series[0][0] ? cur[1] : 0)} · ${nf(t >= E.series[0][0] ? cur[2] : 0)}`,
+        cfg: { x: zoom ? X17zoom() : X17(), y: [0, pmax], yTicks: [0, pmax / 2, pmax], padL: 40, padR: 36, xTicks: zoom ? hourTicks() : dayTicks(), xFmt: fmtT, legend: !o.compact, spans: fireSpans(o.compact),
+          y2: { range: [0, bmax], ticks: [0, bmax / 2, bmax], color: COL.dark, fmt: (v) => nf(v) },
+          series: [{ pts: E.series.map((p) => [p[0], p[1]]), color: COL.violet, fill: 'rgba(122,75,214,A)', label: L('People (GHSL 2015)', 'Pessoas (GHSL 2015)'), fmt: (v) => nf(v), splitAt: t },
+            { pts: E.series.map((p) => [p[0], p[2]]), color: COL.dark, width: 1.2, axis: 2, label: L('Buildings (OSM)', 'Edifícios (OSM)'), fmt: (v) => nf(v), splitAt: t }], cursor: t },
+        insight: () => { const w = E.warning; const k = w.slice(0, 3).reduce((s2, x) => s2 + x.pop, 0);
+          return L(`About ${nf(E.popBurned)} residents (GHSL 2015) and ${nf(E.bldBurned)} buildings (OSM) lay inside the final scar. ${nf(k)} people were reached less than 6 h after the first alert (${fmtHMm(E.alert)}); the deadliest villages were overtaken 5–6 h after it.`, `Cerca de ${nf(E.popBurned)} residentes (GHSL 2015) e ${nf(E.bldBurned)} edifícios (OSM) ficavam dentro da área ardida final. ${nf(k)} pessoas foram atingidas menos de 6 h depois do primeiro alerta (${fmtHMm(E.alert)}); as aldeias com mais vítimas foram apanhadas 5–6 h depois.`); },
+      };
+    },
+  },
 };
-export const METRIC_IDS = ['area', 'growth', 'ros', 'weather', 'wind', 'hdw', 'fwi', 'firms', 'deaths'];
+export const METRIC_IDS = ['area', 'growth', 'ros', 'exposure', 'weather', 'wind', 'hdw', 'fwi', 'firms', 'deaths'];
 export function drawMetric(chart, id, opts = {}) {
   const m = METRICS[id]; if (!m || !A()) return null;
   const r = m.build(opts);
@@ -190,6 +211,8 @@ function kpis() {
     { k: L('Peak spread', 'Propagação máxima'), v: `${nf(pk.p50 * 0.06, 1)} km/h`, s: L(`median front · ${fmtHMm(pk.t)}`, `frente mediana · ${fmtHMm(pk.t)}`) },
     { k: L('FWI 17 Jun', 'FWI 17 jun'), v: nf(d17.fwi, 1), s: `${fwiClass(d17.fwi)} · SGIF ${nf(34.8, 1)}` },
     { k: L('High severity', 'Severidade alta'), v: `${nf(100 * hi / a.totals.burnedHa)}%`, s: L('moderate-high + high dNBR', 'dNBR moderada-alta + alta') },
+    ...(a.exposure ? [{ k: L('People in scar', 'Pessoas na área ardida'), v: nf(a.exposure.popBurned), s: L(`GHSL 2015 · ${nf(a.exposure.bldBurned)} buildings (OSM)`, `GHSL 2015 · ${nf(a.exposure.bldBurned)} edifícios (OSM)`) }] : []),
+    ...(a.history ? [{ k: L('No fire since 1975', 'Sem fogo desde 1975'), v: `${nf(a.history.neverPct)}%`, s: L('of the 2017 scar (ICNF records)', 'da área de 2017 (registos ICNF)') }] : []),
   ];
 }
 const kpiHtml = (list) => `<div class="dk-grid">${list.map((k) => `<div class="dk${k.red ? ' red' : ''}"><small>${esc(k.k)}</small><b>${esc(k.v)}</b><span>${esc(k.s)}</span></div>`).join('')}</div>`;
@@ -219,6 +242,49 @@ function validationHtml(full) {
     <table class="vt"><thead><tr><th>${L('Site', 'Local')}</th><th>${L('Victims', 'Vítimas')}</th><th>${L('Arrival', 'Chegada')}</th><th>${L('Death', 'Morte')}</th><th>${L('Lead', 'Antecedência')}</th></tr></thead><tbody>
     ${rows.map((s) => `<tr class="${s.excluded ? 'ex' : ''}"><td>${esc(s.k)}</td><td>${s.n}</td><td>${s.arrival !== null ? fmtHMm(s.arrival) : '—'}</td><td>${s.death >= 24 ? fmtT(s.death) : fmtHMm(s.death)}</td><td>${s.excluded ? `<span class="muted">${L('found later', 'encontrada depois')}</span>` : `<span class="lead"><i style="width:${clamp(Math.abs(s.leadMin) / mx * 100, 2, 100)}%;${s.leadMin < 0 ? 'background:#c9372c' : ''}"></i></span>${s.leadMin > 0 ? '+' : ''}${nf(s.leadMin)}′`}</td></tr>`).join('')}
     </tbody></table>`;
+}
+const FT_PT = { Broadleaved: 'Folhosas (sobretudo eucalipto)', Coniferous: 'Resinosas (sobretudo pinheiro-bravo)', 'No tree cover': 'Sem coberto arbóreo' };
+const FT_EN = { Broadleaved: 'Broadleaved (mostly eucalyptus)', Coniferous: 'Coniferous (mostly maritime pine)', 'No tree cover': 'No tree cover' };
+function forestTypeHtml() {
+  const F = A().forestType; if (!F) return '';
+  const bro = F.find((f) => f.k === 'Broadleaved'), con = F.find((f) => f.k === 'Coniferous');
+  return `<table class="vt"><thead><tr><th>${L('Type (Copernicus 2015)', 'Tipo (Copernicus 2015)')}</th><th>${L('Burned', 'Ardido')}</th><th>${L('% of type', '% do tipo')}</th><th>${L('Severity', 'Severidade')}</th><th>${L('High', 'Alta')}</th></tr></thead><tbody>
+    ${F.map((f) => { const tot = f.sev.reduce((s2, x) => s2 + x, 0) || 1; return `<tr><td>${esc(L(FT_EN[f.k], FT_PT[f.k]))}</td><td>${nf(f.ha)} ha</td><td>${nf(f.pct)}%</td><td><span class="sev-mini">${f.sev.map((v, i) => `<i style="flex:${v};background:${SEV_COL[i]}"></i>`).join('')}</span></td><td><b>${nf(f.high)}%</b></td></tr>`; }).join('')}
+  </tbody></table>
+  <p class="dk-note">${L(`Pine stands burned in a larger share (${nf(con.pct)}% of all coniferous cover in the area vs ${nf(bro.pct)}% of broadleaved), but once burning, both reached similar severity (${nf(con.high)}% vs ${nf(bro.high)}% high). In this fire, the weather mattered more than the tree species. Copernicus does not separate eucalyptus from other broadleaves; in this region most broadleaved cover is eucalyptus.`, `Os pinhais arderam numa proporção maior (${nf(con.pct)}% de todas as resinosas da área vs ${nf(bro.pct)}% das folhosas), mas, uma vez a arder, ambos atingiram severidade semelhante (${nf(con.high)}% vs ${nf(bro.high)}% alta). Neste incêndio, a meteorologia pesou mais do que a espécie. O Copernicus não separa o eucalipto das outras folhosas; nesta região a maior parte das folhosas é eucalipto.`)}</p>`;
+}
+const TSF_PT = { '< 5 years': '< 5 anos', '5–9 years': '5–9 anos', '10–19 years': '10–19 anos', '20–42 years': '20–42 anos', 'No fire since 1975': 'Sem fogo desde 1975' };
+function historyHtml() {
+  const Hh = A().history; if (!Hh) return '';
+  const r = Hh.reburn; const k10 = Hh.tsf.find((x) => x.k === '10–19 years'), k5 = Hh.tsf.find((x) => x.k === '< 5 years');
+  return `<small class="dk-cap" style="margin:2px 0 4px">${L('Time since the previous fire → share burned at high severity', 'Tempo desde o fogo anterior → fração com severidade alta')}</small>
+    ${barsHtml(Hh.tsf, { value: (x) => x.high ?? 0, label: (x) => L(x.k, TSF_PT[x.k]), fmt: (v) => `${nf(v)}%`, max: 100, color: (x) => (x.k === '< 5 years' ? '#e3b06a' : COL.red), sub: (x) => `${nf(x.ha)} ha` })}
+    <div class="dk-two2"><div><small class="dk-cap">${L('Fires on the same ground, 1975–2016', 'Fogos no mesmo local, 1975–2016')}</small>${barsHtml(Hh.recurrence, { value: (x) => x.ha, label: (x) => L(`${x.k} fire${x.k === '1' ? '' : 's'}`, `${x.k} fogo${x.k === '1' ? '' : 's'}`), fmt: (v) => `${nf(v)} ha`, color: '#b9a68a' })}</div></div>
+    <p class="dk-note">${L(`Ground burned less than 5 years earlier had little fuel and burned less severely (${nf(k5.high)}% high) than ground left 10–19 years (${nf(k10.high)}%). ${nf(Hh.neverPct)}% of the scar had no recorded fire since 1975. Only ${nf(r.ha)} ha (${nf(r.pct, 1)}%) has burned again since 2017 (mostly in 2025).`, `Terreno ardido há menos de 5 anos tinha pouco combustível e ardeu com menos severidade (${nf(k5.high)}% alta) do que terreno com 10–19 anos sem arder (${nf(k10.high)}%). ${nf(Hh.neverPct)}% da área não tinha fogo registado desde 1975. Só ${nf(r.ha)} ha (${nf(r.pct, 1)}%) voltaram a arder desde 2017 (sobretudo em 2025).`)}</p>`;
+}
+function villageRows() {
+  const E = A().exposure; const fat = app.real.record.cti?.fatalities || [];
+  // each CTI fatality site counts once, for its nearest village (≤ 1.5 km)
+  const dead = new Map();
+  fat.forEach((f) => { let best = null, bd = 1500; E.villages.forEach((v) => { const d = Math.hypot(f.x - v.x, f.z - v.z); if (d < bd) { bd = d; best = v.k; } }); if (best) dead.set(best, (dead.get(best) || 0) + f.count); });
+  const all = E.villages.filter((v) => v.warnH <= 12 && (v.pop1km >= 40 || dead.has(v.k))).map((v) => ({ ...v, dead: dead.get(v.k) || 0 }));
+  // every village with victims, then the most populated ones, shown in order of fire arrival
+  const pick = [...all.filter((v) => v.dead), ...all.filter((v) => !v.dead).sort((p, q) => q.pop1km - p.pop1km)].slice(0, 18);
+  return pick.sort((p, q) => p.arr - q.arr);
+}
+function exposureHtml() {
+  const E = A().exposure; if (!E) return '';
+  const vill = villageRows();
+  return `<div class="dk-two2"><div><small class="dk-cap">${L('Residents by time between the first alert and fire arrival', 'Residentes pelo tempo entre o primeiro alerta e a chegada do fogo')}</small>
+    ${barsHtml(E.warning, { value: (x) => x.pop, label: (x) => x.k, fmt: (v) => nf(v), color: COL.violet, sub: (x) => L(`${nf(x.bld)} buildings`, `${nf(x.bld)} edifícios`) })}</div>
+    <div><table class="vt"><thead><tr><th>${L('Village', 'Aldeia')}</th><th>${L('Fire arrives', 'Fogo chega')}</th><th>${L('After alert', 'Após alerta')}</th><th>${L('Pop. ≤ 1 km', 'Pop. ≤ 1 km')}</th><th>${L('Dead', 'Mortos')}</th></tr></thead><tbody>
+    ${vill.map((v, i) => `<tr class="vrow click" data-i="${i}"><td>${esc(v.k)}</td><td>${fmtT(v.arr)}</td><td>${nf(v.warnH, 1)} h</td><td>${nf(v.pop1km)}</td><td>${v.dead ? `<b class="red">${v.dead}</b>` : '—'}</td></tr>`).join('')}</tbody></table></div></div>
+    <p class="dk-note">${L('Villages with victims plus the most populated ones (≥ 40 residents within 1 km) reached in the first 12 h. Population from the JRC GHSL 2015 grid (100 m); buildings from OpenStreetMap (mapped today, so they include post-2017 reconstruction). Times are counted from the first 112 alert (14:43); each CTI fatality site is counted for its nearest village. Click a village to fly to it.', 'Aldeias com vítimas e as mais populosas (≥ 40 residentes num raio de 1 km) atingidas nas primeiras 12 h. População da grelha GHSL 2015 do JRC (100 m); edifícios do OpenStreetMap (mapeados hoje, por isso incluem a reconstrução depois de 2017). Tempos contados a partir do primeiro alerta 112 (14:43); cada local de vítimas da CTI conta para a aldeia mais próxima. Clica numa aldeia para voar até lá.')}</p>`;
+}
+function wireVillages(root) {
+  const E = A().exposure; if (!E) return;
+  const vill = villageRows();
+  root.querySelectorAll('tr.vrow').forEach((el) => el.addEventListener('click', () => { const v = vill[+el.dataset.i]; closeDashboard(); app.setTime(v.arr + 0.1); app.flyTo(v.x, v.z, 3800, app.state.dim === '2d' ? 0.0001 : 0.85, 0.3, 1.6); }));
 }
 function terrainHtml() {
   const a = A(); const e = a.terrain.elev.filter((b) => b.ha > 0);
@@ -258,6 +324,7 @@ export function sideAnalysisHtml() {
     <div class="an-sec"><h4>${L('Burn severity (Sentinel-2 dNBR)', 'Severidade (dNBR Sentinel-2)')}</h4>${severityHtml()}</div>
     <div class="an-sec"><h4>${L('Burned area by municipality', 'Área ardida por concelho')}</h4>${muniHtml(8)}</div>
     <div class="an-sec"><h4>${L('Burned area by land cover (COS 2018)', 'Área ardida por uso do solo (COS 2018)')}</h4>${landcoverHtml(5)}</div>
+    ${A().history ? `<div class="an-sec"><h4>${L('Fire history → severity', 'Histórico de fogo → severidade')}</h4>${barsHtml(A().history.tsf, { value: (x) => x.high ?? 0, label: (x) => L(x.k, TSF_PT[x.k]), fmt: (v) => `${nf(v)}%`, max: 100, color: COL.red, sub: (x) => L(`${nf(x.ha)} ha · share at high severity`, `${nf(x.ha)} ha · fração com severidade alta`) })}</div>` : ''}
   </div>`;
 }
 export function wireSideAnalysis(root) {
@@ -267,7 +334,7 @@ export function wireSideAnalysis(root) {
 
 // ------------------------------------------------------------------ full-screen dashboard
 let dashCharts = [];
-const CARD_IDS = [['area', true], ['growth', true], ['ros', true], ['deaths', false], ['weather', true], ['wind', true], ['hdw', true], ['fwi', false], ['firms', false]];
+const CARD_IDS = [['area', true], ['growth', true], ['ros', true], ['exposure', true], ['deaths', false], ['weather', true], ['wind', true], ['hdw', true], ['fwi', false]];
 export function openDashboard() {
   if (!A()) return;
   let el = document.getElementById('dash');
@@ -284,6 +351,10 @@ export function openDashboard() {
       <article class="dc"><h3>${L('Burn severity', 'Severidade')}</h3>${severityHtml()}<p class="dk-note">${L(`Mean dNBR inside the scar ${nf(A().totals.meanDnbr, 2)}. Most of the area burned at moderate-high to high severity, consistent with crown fire in eucalyptus and pine.`, `dNBR médio dentro da área ardida ${nf(A().totals.meanDnbr, 2)}. A maior parte ardeu com severidade moderada-alta a alta, coerente com fogo de copas em eucalipto e pinheiro.`)}</p></article>
       <article class="dc"><h3>${L('Land cover burned (COS 2018)', 'Uso do solo ardido (COS 2018)')}</h3>${landcoverHtml(7)}<p class="dk-note">${(() => { const f = A().landcover.find((l) => l.k === 'Forest'); return L(`Forest made up ${nf(100 * f.ha / A().totals.burnedHa)}% of the burned area.`, `A floresta representou ${nf(100 * f.ha / A().totals.burnedHa)}% da área ardida.`); })()}</p></article>
       <article class="dc"><h3>${L('Terrain', 'Relevo')}</h3>${terrainHtml()}</article>
+      <article class="dc wide2"><h3>${L('Exposure: people, buildings and warning time', 'Exposição: pessoas, edifícios e tempo de aviso')}</h3>${exposureHtml()}</article>
+      <article class="dc"><h3>${L('Forest type and severity', 'Tipo de floresta e severidade')}</h3>${forestTypeHtml()}</article>
+      <article class="dc"><h3>${L('Fire history (ICNF 1975–2025)', 'Histórico de fogo (ICNF 1975–2025)')}</h3>${historyHtml()}</article>
+      <article class="dc"><h3>${METRICS.firms.label()}</h3><canvas data-m="firms"></canvas><p class="dc-i" data-i="firms"></p></article>
       <article class="dc wide2"><h3>${L('Municipalities', 'Concelhos')}</h3>${muniTable()}<p class="dk-note">${L('Click a municipality to fly to it. Fatalities are counted by CTI site location.', 'Clica num concelho para voar até lá. As vítimas são contadas pela localização dos locais da CTI.')}</p></article>
       <article class="dc wide2"><h3>${L('Validation against fatality sites (CTI)', 'Validação com os locais das vítimas (CTI)')}</h3>${validationHtml(true)}</article>
     </section>
@@ -298,7 +369,7 @@ export function openDashboard() {
   redrawDashboard();
   el.querySelectorAll('.dc-i').forEach((p) => { const m = METRICS[p.dataset.i].build({}); p.innerHTML = m.insight ? m.insight() : ''; });
   drawRose(el.querySelector('canvas.rose'));
-  wireMuni(el);
+  wireMuni(el); wireVillages(el);
   el.querySelector('#dashClose').onclick = closeDashboard;
   el.querySelectorAll('.dash-zoom button').forEach((b) => (b.onclick = () => { el.dataset.zoom = b.dataset.z; openDashboard(); }));
   el.querySelector('#dashCsv').onclick = () => {
@@ -316,7 +387,7 @@ function muniTable() {
 export function redrawDashboard() {
   const el = document.getElementById('dash'); if (!el || !el.classList.contains('open')) return;
   const zoom = el.dataset.zoom === '1';
-  dashCharts.forEach(({ ch, id }) => drawMetric(ch, id, { solid: true, zoom: zoom && CARD_IDS.find((c) => c[0] === id)[1] }));
+  dashCharts.forEach(({ ch, id }) => drawMetric(ch, id, { solid: true, zoom: zoom && (CARD_IDS.find((c) => c[0] === id) || [])[1] }));
 }
 export function closeDashboard() { const el = document.getElementById('dash'); if (el) el.classList.remove('open'); document.body.classList.remove('dash-open'); }
 export const dashboardOpen = () => document.getElementById('dash')?.classList.contains('open');

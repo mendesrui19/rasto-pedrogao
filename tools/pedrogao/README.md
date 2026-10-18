@@ -44,3 +44,11 @@ The rasters above (`dem.f32`, `arrival.f32`, `fuel.u8`, `cos.u8`, `ndvi.png`, `d
     - Canadian FWI system computed daily at 13:00 local from 1 April start-up values (FFMC 85, DMC 6, DC 15). 17 June gives FWI 31.2, FFMC 94.1; the SGIF figures are 34.8 and 94.5.
     - Hot-Dry-Windy index (VPD × wind), burn severity classes (dNBR), land cover (COS2018), terrain, spread speed (inverse arrival-time gradient), burned area by municipality and day, FIRMS overpasses.
     - Validation against the CTI fatality sites; a death record more than 6 h after fire arrival is treated as the time the victim was found.
+11. `python fetch_extra.py <raw>` (run before `analysis.py`) downloads the extra datasets into `<raw>/extra/`:
+    - Copernicus HRL Dominant Leaf Type 2015 (EEA ImageServer);
+    - ICNF burned areas 1975–2025 (WFS);
+    - OSM building centroids;
+    - Meteostat Monte Real;
+    - the IEM METAR archive.
+    Download the GHSL population tile `GHS_POP_E2015_GLOBE_R2023A_54009_100_V1_0_R5_C18` (JRC) into `<raw>/extra/ghsl/`.
+    They feed the forest-type × severity, fire-history, exposure and station sections, plus `history.png` / `reburn.png`.

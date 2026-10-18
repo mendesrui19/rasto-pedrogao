@@ -28,6 +28,8 @@ const LAYER_THUMBS = {
   admin: 'linear-gradient(135deg,#e6e2da,#cfcac0)',
   munis: 'repeating-linear-gradient(135deg,#e9e2f5 0 4px,#8a6cc0 4px 6px)',
   closures: 'linear-gradient(90deg,#d21e1e 0 28%,#fff 28%)',
+  history: 'linear-gradient(135deg,#0b4f6c,#1f7a8c 35%,#4fa3a5 65%,#a8d5ce)',
+  reburn: 'linear-gradient(135deg,#3f6fd6,#7a4bd6 55%,#be3ca0)',
 };
 const NO_SLIDER = ['supp', 'structures', 'roads', 'admin'];
 

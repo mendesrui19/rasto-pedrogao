@@ -3,6 +3,9 @@
 Inputs: data/pedrogao/{meta,record,osm}.json + src/ rasters, and in <raw>/:
   era5_long.json  Open-Meteo ERA5 archive, hourly, 2017-04-01 → 06-30 at 39.955 N 8.17 W (FWI spin-up)
   admin7.json     OSM Overpass, admin_level=7 relations (municipalities) intersecting the domain
+  extra/          from fetch_extra.py: HRL leaf type 2015, ICNF burned areas 1975–2025, OSM buildings,
+                  GHSL population 2015 (ghsl/*.tif), Meteostat Monte Real
+Also writes history.png (fire history before 2017) and reburn.png (2017 scar burned again 2018–2025), 400² RGBA.
 Usage: python analysis.py data/pedrogao <raw>
 """
 import json, math, os, sys
@@ -225,7 +228,131 @@ out = {
     'deathsCum': cum,
     'totals': {'burnedHa': r1(burned.sum() * HA, 0), 'highSevPct': r1(100 * (burned & (sevc >= 3)).sum() / burned.sum()), 'meanDnbr': r1(dnbr[burned].mean(), 2)},
 }
+# ------------------------------------------------------------------ extra datasets (fetch_extra.py)
+X = os.path.join(RAW, 'extra')
+import glob, gzip, csv
+import rasterio
+from rasterio.warp import reproject, Resampling
+from rasterio.transform import from_origin
+from rasterio.features import rasterize
+from rasterio.crs import CRS
+LCRS = CRS.from_proj4(f"+proj=tmerc +lat_0={meta['lat0']} +lon_0={meta['lon0']} +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +units=m +no_defs")
+GTR = from_origin(-HALF, HALF, FC, FC)         # row 0 = north edge = z -HALF (z = -northing)
+def to_grid(path, resampling, dtype='float32'):
+    out = np.zeros((FN, FN), dtype)
+    with rasterio.open(path) as src:
+        reproject(rasterio.band(src, 1), out, dst_transform=GTR, dst_crs=LCRS, resampling=resampling, src_nodata=src.nodata, dst_nodata=0)
+    return out
+sev_high = sevc >= 3
+
+# forest type before the fire (Copernicus HRL Dominant Leaf Type 2015: 1 broadleaved ≈ eucalyptus here, 2 coniferous ≈ maritime pine)
+with rasterio.open(os.path.join(X, 'dlt2015.tif')) as src:      # 0 is a real class (no trees): shift by 1 so 0 can be nodata
+    a0 = src.read(1).astype('uint8') + 1; dlt = np.zeros((FN, FN), 'uint8')
+    reproject(a0, dlt, src_transform=src.transform, src_crs=src.crs, dst_transform=GTR, dst_crs=LCRS, resampling=Resampling.mode, src_nodata=0, dst_nodata=0)
+dlt = dlt.astype(np.int16) - 1
+forest_type = []
+for code, k in [(1, 'Broadleaved'), (2, 'Coniferous'), (0, 'No tree cover')]:
+    m = dlt == code; b = m & burned
+    if m.sum() == 0: continue
+    forest_type.append({'k': k, 'ha': r1(b.sum() * HA, 0), 'domainHa': r1(m.sum() * HA, 0), 'pct': r1(100 * b.sum() / m.sum()), 'dnbr': r1(dnbr[b].mean(), 2) if b.any() else None,
+                        'high': r1(100 * (b & sev_high).sum() / max(b.sum(), 1)), 'sev': [r1((b & (sevc == c)).sum() * HA, 0) for c in range(5)]})
+
+# fire history: ICNF burned areas 1975–2016 (before) and 2018–2025 (after)
+fwd_ll = Transformer.from_crs('EPSG:4326', LCRS, always_xy=True)
+def proj_geom(g):
+    def ring(r): xs, ys = fwd_ll.transform([q[0] for q in r], [q[1] for q in r]); return list(zip(xs, ys))
+    if g['type'] == 'Polygon': return {'type': 'Polygon', 'coordinates': [ring(r) for r in g['coordinates']]}
+    if g['type'] == 'MultiPolygon': return {'type': 'MultiPolygon', 'coordinates': [[ring(r) for r in p] for p in g['coordinates']]}
+    return None
+by_year = {}
+for f in sorted(glob.glob(os.path.join(X, 'icnf_ardida_*.json'))):
+    for ft in json.load(open(f))['features']:
+        y = int(ft['properties'].get('Ano') or 0); g = ft.get('geometry')
+        if not g or y < 1975: continue
+        pg = proj_geom(g)
+        if pg: by_year.setdefault(y, []).append(pg)
+count_pre = np.zeros((FN, FN), np.int16); last_pre = np.zeros((FN, FN), np.int16); first_post = np.zeros((FN, FN), np.int16)
+area_by_year = []
+for y in sorted(by_year):
+    m = rasterize(((g, 1) for g in by_year[y]), out_shape=(FN, FN), transform=GTR, fill=0, dtype='uint8').astype(bool)
+    area_by_year.append({'y': y, 'ha': r1(m.sum() * HA, 0), 'inScar': r1((m & burned).sum() * HA, 0)})
+    if y < 2017: count_pre += m; last_pre = np.where(m, y, last_pre)
+    elif y > 2017: first_post = np.where(m & (first_post == 0), y, first_post)
+tsf = np.where(last_pre > 0, 2017 - last_pre, 99)
+TSF = [('< 5 years', 0, 5), ('5–9 years', 5, 10), ('10–19 years', 10, 20), ('20–42 years', 20, 43), ('No fire since 1975', 99, 100)]
+history = {'tsf': [], 'recurrence': [], 'byYear': area_by_year}
+for k, a, b in TSF:
+    m = burned & (tsf >= a) & (tsf < b)
+    history['tsf'].append({'k': k, 'ha': r1(m.sum() * HA, 0), 'dnbr': r1(dnbr[m].mean(), 2) if m.sum() > 20 else None, 'high': r1(100 * (m & sev_high).sum() / max(m.sum(), 1)) if m.sum() > 20 else None})
+for n in range(0, 5):
+    m = burned & ((count_pre == n) if n < 4 else (count_pre >= 4))
+    history['recurrence'].append({'k': f'{n}' if n < 4 else '4+', 'ha': r1(m.sum() * HA, 0)})
+reb = burned & (first_post > 0)
+history['reburn'] = {'ha': r1(reb.sum() * HA, 0), 'pct': r1(100 * reb.sum() / burned.sum()), 'byYear': [{'y': y, 'ha': r1((burned & (first_post == y)).sum() * HA, 0)} for y in range(2018, 2026)]}
+history['neverPct'] = r1(100 * (burned & (tsf == 99)).sum() / burned.sum())
+# map rasters: fire history before 2017 (colour by time since last fire) and post-2017 re-burn
+def rgba(mask, col, alpha):
+    im = np.zeros((FN, FN, 4), np.uint8); im[mask] = (*col, alpha); return im
+hist_img = np.zeros((FN, FN, 4), np.uint8)
+for (a, b), col in zip([(0, 5), (5, 10), (10, 20), (20, 43)], [(11, 79, 108), (31, 122, 140), (79, 163, 165), (168, 213, 206)]):   # teal ramp, distinct from the fire palette
+    m = (tsf >= a) & (tsf < b); hist_img[m] = (*col, 170)
+Image.fromarray(hist_img, 'RGBA').save(os.path.join(D, 'history.png'), optimize=True)
+reb_img = np.zeros((FN, FN, 4), np.uint8)
+for y, col in zip(range(2018, 2026), [(63, 111, 214), (63, 111, 214), (90, 80, 200), (90, 80, 200), (122, 75, 214), (122, 75, 214), (160, 70, 190), (190, 60, 160)]):
+    m = first_post == y; reb_img[m] = (*col, 190)
+Image.fromarray(reb_img, 'RGBA').save(os.path.join(D, 'reburn.png'), optimize=True)
+
+# exposure: GHSL population 2015 (100 m) and OSM buildings
+ghsl = glob.glob(os.path.join(X, 'ghsl', '*.tif'))[0]
+pop = to_grid(ghsl, Resampling.sum)
+bl = json.load(open(os.path.join(X, 'buildings.json')))
+bx, bz = zip(*[xz(b['lon'], b['lat']) for b in bl])
+bx, bz = np.array(bx), np.array(bz)
+inb = (np.abs(bx) < HALF) & (np.abs(bz) < HALF)
+bi = ((bx[inb] + HALF) / FC).astype(int).clip(0, FN - 1); bj = ((bz[inb] + HALF) / FC).astype(int).clip(0, FN - 1)
+bld = np.zeros((FN, FN), np.int32); np.add.at(bld, (bj, bi), 1)
+alert = min(g['alert'] for g in meta['ignitions'])
+arr_b = np.where(burned, arr, np.inf)
+def exposed_by(ths):
+    return [[float(t), r1(pop[arr_b <= t].sum(), 0), int(bld[arr_b <= t].sum())] for t in ths]
+WARN = [('< 1 h', 0, 1), ('1–3 h', 1, 3), ('3–6 h', 3, 6), ('6–12 h', 6, 12), ('12–24 h', 12, 24), ('> 24 h', 24, 999)]
+warn = []
+for k, a, b in WARN:
+    m = burned & (arr - alert >= a) & (arr - alert < b)
+    warn.append({'k': k, 'pop': r1(pop[m].sum(), 0), 'bld': int(bld[m].sum())})
+# villages: population within 1 km and fire arrival
+osm = json.load(open(os.path.join(D, 'osm.json')))
+vill = []
+for p in osm['places']:
+    if p.get('k') not in ('village', 'hamlet', 'town'): continue
+    j0, i0 = int((p['z'] + HALF) / FC), int((p['x'] + HALF) / FC)
+    if not (0 <= j0 < FN and 0 <= i0 < FN): continue
+    k = 4; sub = arr[max(0, j0 - 2):j0 + 3, max(0, i0 - 2):i0 + 3]; a = float(sub.min())
+    if a >= 900: continue
+    pp = float(pop[max(0, j0 - k):j0 + k + 1, max(0, i0 - k):i0 + k + 1].sum())
+    vill.append({'k': p['n'], 'arr': r1(a, 3), 'warnH': r1(a - alert, 1), 'pop1km': r1(pp, 0), 'x': p['x'], 'z': p['z']})
+vill.sort(key=lambda v: v['arr'])
+exposure = {'popDomain': r1(pop.sum(), 0), 'popBurned': r1(pop[burned].sum(), 0), 'bldDomain': int(bld.sum()), 'bldBurned': int(bld[burned].sum()),
+            'series': exposed_by(np.arange(14.5, 144.01, 0.5)), 'warning': warn, 'alert': alert, 'villages': vill[:150],
+            'popWithin3hOfAlert': r1(pop[burned & (arr - alert < 3)].sum(), 0)}
+
+# station observations: Meteostat Monte Real (08540, ~60 km W), hourly UTC → local (UTC+1)
+obs = []
+fn = os.path.join(X, 'meteostat_08540.csv.gz')
+if os.path.exists(fn):
+    for r in csv.reader(gzip.open(fn, 'rt')):
+        if not r[0].startswith('2017-06-1') and not r[0].startswith('2017-06-2'): continue
+        d = datetime.fromisoformat(r[0]); th = (d - datetime(2017, 6, 17)).total_seconds() / 3600 + int(r[1]) + 1
+        if -24 <= th <= 168:
+            num = lambda v: float(v) if v not in ('', None) else None
+            obs.append({'t': th, 'temp': num(r[2]), 'rh': num(r[4]), 'wd': num(r[7]), 'ws': num(r[8])})
+out.update({'forestType': forest_type, 'history': history, 'exposure': exposure, 'station': {'name': 'Monte Real (IPMA 08540)', 'distKm': 60, 'obs': obs}})
 json.dump(out, open(os.path.join(D, 'analysis.json'), 'w'), separators=(',', ':'), ensure_ascii=False)
+print('forest type', [(f['k'], f['ha'], f['pct'], f['dnbr'], f['high']) for f in forest_type])
+print('tsf', history['tsf']); print('recurrence', history['recurrence']); print('reburn', history['reburn'], 'never', history['neverPct'])
+print('exposure', {k: exposure[k] for k in ('popDomain', 'popBurned', 'bldDomain', 'bldBurned', 'popWithin3hOfAlert')}, exposure['warning'])
+print('villages', [(v['k'], v['warnH'], v['pop1km']) for v in vill[:8]])
+print('station obs', len(obs))
 print('analysis.json', os.path.getsize(os.path.join(D, 'analysis.json')), 'bytes')
 d17 = [d for d in daily if d['d'] == 17][0]
 print('FWI 17 Jun', d17, '| SGIF 34.8')
