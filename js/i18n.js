@@ -2,7 +2,7 @@
 // including content rendered later (observed with a MutationObserver), and restores the English originals on switch-back.
 const PT = {
   // top bar / modes / menus
-  'Wildfire Forensic Analysis': 'Análise Forense de Incêndios', 'Incident': 'Incidente', 'Drones': 'Drones', 'Resources': 'Recursos',
+  'Wildfire Forensic Analysis': 'Análise Forense de Incêndios', 'Wildfire data analysis': 'Análise de dados de incêndios', 'Incident': 'Incidente', 'Drones': 'Drones', 'Resources': 'Recursos',
   'View': 'Ver', 'Analysis': 'Análise', 'Share': 'Partilhar', 'Settings': 'Definições', 'Toggle side panel': 'Mostrar/ocultar painel lateral',
   'Incidents': 'Incidentes', 'Incident overview…': 'Resumo do incidente…', 'Overview is in the side panel': 'O resumo está no painel lateral',
   'Pedrógão Grande 2017 · real data': 'Pedrógão Grande 2017 · dados reais', 'Ridgeview Incident · synthetic demo': 'Incidente Ridgeview · demo sintético',

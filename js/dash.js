@@ -374,7 +374,7 @@ export function openDashboard() {
   el.querySelectorAll('.dash-zoom button').forEach((b) => (b.onclick = () => { el.dataset.zoom = b.dataset.z; openDashboard(); }));
   el.querySelector('#dashCsv').onclick = () => {
     const blob = new Blob([JSON.stringify(A(), null, 1)], { type: 'application/json' });
-    const a2 = document.createElement('a'); a2.href = URL.createObjectURL(blob); a2.download = 'pedrogao_analysis.json'; a2.click(); setTimeout(() => URL.revokeObjectURL(a2.href), 1000);
+    const a2 = document.createElement('a'); a2.href = URL.createObjectURL(blob); a2.download = 'rasto_pedrogao_analysis.json'; a2.click(); setTimeout(() => URL.revokeObjectURL(a2.href), 1000);
   };
 }
 function muniTable() {

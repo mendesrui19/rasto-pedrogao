@@ -1,4 +1,4 @@
-# FireTrace — Wildfire Forensic Analysis
+# Rasto — Pedrógão Grande 2017 wildfire data analysis
 
 ## Credits
 
@@ -12,7 +12,7 @@
 The site shows the Pedrógão Grande 2017 reconstruction (real data). It opens with a notice listing sources and limitations; you can reopen it by clicking the logo or via *Share → Sources, limitations & credits*.
 
 
-An interactive three.js reconstruction of the Pedrógão Grande + Góis fires (17–22 June 2017), inspired by the FireTrace concept video. Terrain, imagery, burned area, fire progression, casualties and resources come from real data; the drones, aircraft and vehicle movements are illustrative.
+An interactive three.js reconstruction of the Pedrógão Grande + Góis fires (17–22 June 2017), inspired by the FireTrace concept video by Dilum Sanjaya (a fictional scenario). Terrain, imagery, burned area, fire progression, casualties and resources come from real data; the drones, aircraft and vehicle movements are illustrative.
 
 ## Run
 

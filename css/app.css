@@ -36,7 +36,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 /* ---------- top bar ---------- */
 #topbar { height: var(--top); flex: none; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: var(--panel); border-bottom: 1px solid var(--line); white-space: nowrap; z-index: 20; }
 .brand { display: flex; align-items: center; gap: 8px; }
-.logo { width: 30px; height: 18px; }
+.logo { width: 20px; height: 20px; flex: none; }
 .brand-name { font-weight: 700; font-size: 15px; letter-spacing: -.2px; }
 .brand-sep { width: 1px; height: 16px; background: var(--line); }
 .brand-sub { color: var(--text2); font-size: 12.5px; }
@@ -181,7 +181,7 @@ body.side-collapsed #side { width: 0; padding: 0; border: 0; }
 #loading { position: absolute; inset: 0; background: #e9e4da; display: flex; align-items: center; justify-content: center; z-index: 30; transition: opacity .6s; }
 #loading.done { opacity: 0; pointer-events: none; }
 .ld-card { text-align: center; }
-.ld-card .logo { width: 56px; height: 34px; }
+.ld-card .logo { width: 44px; height: 44px; }
 .ld-title { font-weight: 700; font-size: 20px; margin: 6px 0 14px; }
 .ld-step { color: var(--muted); margin-bottom: 8px; font-size: 11.5px; }
 .ld-bar { width: 220px; height: 3px; background: #d7d0c4; border-radius: 2px; overflow: hidden; }

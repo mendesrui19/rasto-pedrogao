@@ -136,7 +136,7 @@ function applyRealState(rc) {
     { id: 'DAT-02', title: 'Sentinel-2 · NASA FIRMS · Copernicus DEM', meta: 'Satellite data', tag: 'Data', thumb: TH.Sat },
     { id: 'DAT-03', title: 'Observador — As primeiras 56 horas, minuto a minuto', meta: 'News timeline', tag: 'Report', thumb: TH.Paper },
   ];
-  document.title = 'FireTrace — Pedrógão Grande 2017';
+  document.title = 'Rasto — Pedrógão Grande 2017';
   $('.incident-select b').textContent = 'Pedrógão Grande 2017';
   $('.tb-text').textContent = 'Leiria · Coimbra, Portugal';
   $('[data-menu=dateMenu] span').textContent = 'Jun 17, 2017 – Jun 22, 2017';
@@ -1106,7 +1106,7 @@ app.snapshot = () => {
     const d = units.drones.find((q) => q.id === state.selDrone);
     // published site: the still is saved to the visitor's computer, the shared evidence list stays read-only
     const a = document.createElement('a'); a.href = cv.toDataURL('image/png');
-    a.download = `firetrace_${d.id}_${d.sensor}_${fmtTime(state.time).replace(/[^0-9a-z]+/gi, '_')}.png`; a.click();
+    a.download = `rasto_${d.id}_${d.sensor}_${fmtTime(state.time).replace(/[^0-9a-z]+/gi, '_')}.png`; a.click();
     UI.toast(`Camera still saved · ${d.id}`);
   };
   const f = $('.pip-flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
