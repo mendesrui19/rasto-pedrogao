@@ -15,7 +15,7 @@ import { hydrateIcons } from './icons.js';
 import * as UI from './ui.js';
 import * as DASH from './dash.js';
 import { loadReal, realUnits, headFilterFactory } from './real.js';
-import { initI18n } from './i18n.js';
+import { initI18n, getLang } from './i18n.js';
 
 const INCIDENT = 'pedrogao';
 
@@ -841,8 +841,8 @@ function cycleCam() {
 // Precomputed every 15 min from the arrival field: centre and spread of the active front (cells that burned in the
 // last hour). During playback the camera glides to it, zooms with the front's size and slowly orbits; any manual
 // camera move pauses it until play is pressed again.
-const fireCam = { on: true, engaged: false, track: null, az: 0 };
-try { fireCam.on = localStorage.getItem('firetrace.follow') !== '0'; } catch (e) { /* storage unavailable */ }
+// opt-in: the camera is always the user's unless "Follow fire" is switched on, and any touch on the map hands it back
+const fireCam = { on: false, engaged: false, track: null };
 function buildFireTrack() {
   // burned cells sorted by arrival + prefix sums of x, z, x², z² → centroid and spread of any time window in O(1)
   const a = fire.arr, N = C.FN, FC = C.FCELL, H = C.HALF;
@@ -887,7 +887,16 @@ function updateFireCam(dt) {
   camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(s));
 }
 app.followFireOn = () => fireCam.on;
-app.setFollowFire = (on) => { fireCam.on = on; fireCam.engaged = on && state.playing; try { localStorage.setItem('firetrace.follow', on ? '1' : '0'); } catch (e) { /* ignore */ } $('#followBtn')?.classList.toggle('on', on); };
+app.setFollowFire = (on) => {
+  fireCam.on = on; fireCam.engaged = on; $('#followBtn')?.classList.toggle('on', on);
+  if (on && !state.playing) togglePlay(true);
+};
+function releaseFireCam() {
+  if (!fireCam.on) return;
+  fireCam.on = false; fireCam.engaged = false; $('#followBtn')?.classList.remove('on');
+  UI.toast(getLang() === 'pt' ? 'Câmara livre' : 'Free camera');
+}
+['pointerdown', 'wheel', 'touchstart'].forEach((ev) => canvas.addEventListener(ev, releaseFireCam, { passive: true }));
 
 function updateCamera(dt) {
   updateFireCam(dt);
@@ -947,7 +956,7 @@ canvas.addEventListener('wheel', (e) => {
   if (state.camMode === 'chase') { chase.dist = clamp(chase.dist * (1 + Math.sign(e.deltaY) * 0.12), 10, 3000); e.preventDefault(); }
   if (state.camMode === 'follow') { /* orbit controls handles zoom around the followed unit */ }
 }, { passive: false });
-controls.addEventListener('start', () => { finishTweens(); fireCam.engaged = false; });
+controls.addEventListener('start', () => { finishTweens(); releaseFireCam(); });
 
 // ------------------------------------------------------------------ picking / hover
 const ray = new THREE.Raycaster();

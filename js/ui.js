@@ -63,7 +63,7 @@ export function init(a) {
   $('#btnCollapse').addEventListener('click', () => { document.body.classList.toggle('side-collapsed'); });
   // fire-following camera toggle
   const fb = $('#followBtn');
-  if (fb) { fb.classList.toggle('on', app.followFireOn?.() ?? true); fb.addEventListener('click', () => { const on = !fb.classList.contains('on'); app.setFollowFire(on); toast(on ? DASH.L('Camera follows the fire during playback', 'A câmara segue o fogo durante a reprodução') : DASH.L('Free camera', 'Câmara livre')); }); }
+  if (fb) { fb.classList.toggle('on', !!app.followFireOn?.()); fb.addEventListener('click', () => { const on = !fb.classList.contains('on'); app.setFollowFire(on); toast(on ? DASH.L('Following the fire · touch the map to take the camera back', 'A seguir o fogo · toca no mapa para retomar a câmara') : DASH.L('Free camera', 'Câmara livre')); }); }
   // road-closure toggle on the map (mirrors the layer of the same name)
   const cb = $('#closBtn');
   if (cb) {
