@@ -185,6 +185,22 @@ export class Overlay {
       }
       c.restore();
     }
+    if (L.munis && L.munis.on && s.munis) {
+      // municipal boundaries: soft halo + dashed line, name at the centroid
+      c.save(); c.globalAlpha = L.munis.op; c.lineJoin = 'round';
+      for (const m of s.munis) {
+        for (const r of m.rings) {
+          c.beginPath(); r.forEach(([x, z], i) => (i ? c.lineTo(this.px(x), this.px(z)) : c.moveTo(this.px(x), this.px(z)))); c.closePath();
+          c.setLineDash([]); c.strokeStyle = map ? 'rgba(255,255,255,0.75)' : 'rgba(30,20,50,0.35)'; c.lineWidth = this.m(120); c.stroke();
+          c.setLineDash([this.m(220), this.m(110)]); c.strokeStyle = map ? '#6a4c93' : '#f1e9ff'; c.lineWidth = this.m(map ? 40 : 55); c.stroke();
+        }
+        let sx = 0, sz = 0, n = 0; m.rings.forEach((r) => r.forEach(([x, z]) => { sx += x; sz += z; n++; }));
+        c.setLineDash([]); c.font = `600 ${Math.round(this.m(520))}px Inter, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.lineWidth = this.m(120); c.strokeStyle = map ? 'rgba(255,255,255,0.85)' : 'rgba(30,25,20,0.55)'; c.strokeText(m.k.toUpperCase(), this.px(sx / n), this.px(sz / n));
+        c.fillStyle = map ? '#5a3f80' : '#f4eeff'; c.fillText(m.k.toUpperCase(), this.px(sx / n), this.px(sz / n));
+      }
+      c.restore();
+    }
     if (L.structures.on && s.structures) {
       c.save(); c.globalAlpha = L.structures.op;
       s.structures.forEach((st) => {

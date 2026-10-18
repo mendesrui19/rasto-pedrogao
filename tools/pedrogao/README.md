@@ -37,3 +37,10 @@ The rasters above (`dem.f32`, `arrival.f32`, `fuel.u8`, `cos.u8`, `ndvi.png`, `d
    - `dem.z`, `arrival.z`, `fuel.z`, `cos.z`: compact zlib grids, decoded in `js/real.js`.
    - Pass the Copernicus mosaic as a second argument (`bake_web.py data/pedrogao raw/dem_mosaic.tif`) for the 24 m hillshade and `outer.z` (real relief out to 75 km).
    - After re-baking, bump `DATA_V` in `js/real.js` and the `?v=` on the preloads in `index.html`: `/data` is cached for a day.
+
+## Analysis dashboard data
+10. `python analysis.py data/pedrogao <raw>` → `analysis.json` (loaded by `js/dash.js`).
+    - Needs in `<raw>`: `era5_long.json` (Open-Meteo ERA5 archive, hourly, 1 Apr → 30 Jun 2017 at 39.955 N 8.17 W) and `admin7.json` (Overpass, `admin_level=7` relations in the domain bbox; send a User-Agent header).
+    - Canadian FWI system computed daily at 13:00 local from 1 April start-up values (FFMC 85, DMC 6, DC 15). 17 June gives FWI 31.2, FFMC 94.1; the SGIF figures are 34.8 and 94.5.
+    - Hot-Dry-Windy index (VPD × wind), burn severity classes (dNBR), land cover (COS2018), terrain, spread speed (inverse arrival-time gradient), burned area by municipality and day, FIRMS overpasses.
+    - Validation against the CTI fatality sites; a death record more than 6 h after fire arrival is treated as the time the victim was found.

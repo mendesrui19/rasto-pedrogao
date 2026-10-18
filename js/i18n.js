@@ -94,7 +94,7 @@ const PT = {
   'Add key event': 'Adicionar evento-chave', 'Time': 'Hora', 'Name': 'Nome', 'Add event': 'Adicionar evento', 'Current view centre': 'Centro da vista atual',
   'Rate-of-spread factor': 'Fator de velocidade', 'Wind influence': 'Influência do vento', 'Wind ellipse eccentricity': 'Excentricidade da elipse do vento', 'Run model': 'Correr modelo',
   'Elevation units': 'Unidades de altitude', 'Metric (m)': 'Métrico (m)', 'Imperial (ft)': 'Imperial (pés)', 'Render resolution': 'Resolução', 'Standard (1×)': 'Normal (1×)', 'High (1.5×)': 'Alta (1,5×)',
-  'Retina (2×)': 'Retina (2×)', 'Auto (adaptive)': 'Automática (adaptativa)', 'Show trees': 'Mostrar árvores', 'Show FPS counter': 'Mostrar FPS', 'Playback rate at 1×': 'Velocidade a 1×', 'Apply': 'Aplicar',
+  'Retina (2×)': 'Retina (2×)', 'Municipal boundaries (OSM)': 'Limites dos concelhos (OSM)', 'Auto (adaptive)': 'Automática (adaptativa)', 'Show trees': 'Mostrar árvores', 'Show FPS counter': 'Mostrar FPS', 'Playback rate at 1×': 'Velocidade a 1×', 'Apply': 'Aplicar',
   'Click on the terrain to add points': 'Clique no terreno para adicionar pontos', 'Click to draw the elevation-profile path': 'Clique para desenhar o percurso do perfil', 'Done': 'Concluir',
   // toasts / loading / misc
   'Copied': 'Copiado', 'Link copied to clipboard': 'Link copiado', 'Copy failed': 'Falha ao copiar', 'Snapshot exported': 'Imagem exportada', 'Settings applied': 'Definições aplicadas',

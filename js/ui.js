@@ -4,6 +4,7 @@ import { clamp, fmtTime, fmtHM, fmtDay, fmtInt, fmtLatLon, compassName, T, timeP
 import { ic, hydrateIcons } from './icons.js';
 import { getLang } from './i18n.js';
 import { CAUSES } from './scenario.js';
+import * as DASH from './dash.js';
 import { KT, MPH, FT } from './units.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -25,12 +26,14 @@ const LAYER_THUMBS = {
   structures: 'linear-gradient(135deg,#b9b4ac,#8c8780)',
   roads: 'linear-gradient(135deg,#ebe7e0,#d0cbc2)',
   admin: 'linear-gradient(135deg,#e6e2da,#cfcac0)',
+  munis: 'repeating-linear-gradient(135deg,#e9e2f5 0 4px,#8a6cc0 4px 6px)',
 };
 const NO_SLIDER = ['supp', 'structures', 'roads', 'admin'];
 
 let app, S;
 export function init(a) {
   app = a; S = a.state; D0 = C.T_AXIS0; D1 = C.T_END;
+  DASH.initDash(a);
   LAYER_THUMBS.cti = 'linear-gradient(135deg,#2a2520 0 45%,#d21e1e 45% 60%,#f1ede6 60%)';
   LAYER_THUMBS.hotspots = 'radial-gradient(circle at 35% 40%,#fff3a0 0 12%,#ffb238 28%,#e2401c 55%,#6b1a10)';
   if (R()) $('#tlRange').textContent = `${fmtTime(C.T_START)} – ${fmtTime(C.T_END)}`;
@@ -68,15 +71,22 @@ export function init(a) {
     c.chart.canvas.addEventListener('pointerdown', (e) => {
       if (S.mode === 'drones') return;
       const r = c.chart.canvas.getBoundingClientRect();
-      const scrub = (ev) => { const v = c.chart.xToValue(ev.clientX - r.left); if (S.mode === 'incident' && i === 2) return; app.setTime(v); };
+      const scrub = (ev) => { const v = c.chart.xToValue(ev.clientX - r.left); if (S.mode === 'incident' && (R() ? ['profile', 'fwi'].includes(chartSel()[i]) : i === 2)) return; app.setTime(v); };
       scrub(e);
       const mv = (ev) => scrub(ev); const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
       window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
     });
+    c.title.addEventListener('click', (e) => {
+      if (!R() || S.mode !== 'incident') return;
+      const cur = chartSel()[i];
+      showMenu(e.currentTarget, [{ header: DASH.L('Show in this chart', 'Mostrar neste gráfico') },
+        ...DASH.METRIC_IDS.map((id) => ({ label: DASH.METRICS[id].label(), check: cur === id, action: () => setChartSel(i, id) })),
+        { label: DASH.L('Elevation profile', 'Perfil de elevação'), check: cur === 'profile', action: () => setChartSel(i, 'profile') }]);
+    });
     $('.ch-menu', c.el).addEventListener('click', (e) => showMenu(e.currentTarget, [
       { label: 'Export CSV', action: () => exportCsv(i) },
       { label: 'Copy current value', action: () => { navigator.clipboard?.writeText(c.meta.textContent || c.title.textContent); toast('Copied'); } },
-      ...(S.mode === 'incident' && i === 2 ? [{ sep: true }, { label: 'Draw new profile path…', action: () => app.startMeasure('profile') }, { label: 'Reset to progression path', action: resetProfile }] : []),
+      ...(S.mode === 'incident' && (R() ? chartSel()[i] === 'profile' : i === 2) ? [{ sep: true }, { label: 'Draw new profile path…', action: () => app.startMeasure('profile') }, { label: 'Reset to progression path', action: resetProfile }] : []),
     ]));
   });
   document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.menu') && !e.target.closest('[data-menu]') && !e.target.closest('.ch-menu') && !e.target.closest('#zoomBtn') && !e.target.closest('#tlSpeed') && !e.target.closest('#wxMenu') && !e.target.closest('.feed-add')) closeMenus(); });
@@ -371,6 +381,7 @@ export function showTooltip(a, cx, cy, x, z) {
 }
 
 // ------------------------------------------------------------------ analysis / evidence / notes
+export function onLangChange() { renderAnalysis(); if (DASH.dashboardOpen()) DASH.openDashboard(); }
 function renderAnalysis() {
   if (R()) return renderAnalysisReal();
   const f = app.fire;
@@ -417,7 +428,8 @@ function renderAnalysisReal() {
   const rc = R(); const f = app.fire;
   const maxG = Math.max(...f.ros); const iG = f.ros.indexOf(maxG);
   const at = (t) => fmtInt(f.sampleSeries('area', t));
-  $('#tab-analysis').innerHTML = `
+  $('#tab-analysis').innerHTML = `${DASH.sideAnalysisHtml()}
+    <details class="an-more"><summary>${DASH.L('Official record: ignitions, progression, buildings, CTI findings, sources', 'Registo oficial: ignições, progressão, edifícios, conclusões da CTI, fontes')}</summary>
     <div class="an-sec"><h4>Ignitions (SGIF / ICNF)</h4>
       ${rc.meta.ignitions.map((g) => `<div class="an-row"><span>${g.concelho} · ${g.name}</span><b>${fmtHM(g.t)} · alerta ${fmtHM(g.alert)}</b></div><div class="an-row"><span>Cause</span><span>${g.cause}</span></div><div class="an-row"><span>Area (SGIF)</span><span>${fmtInt(g.area)} ha</span></div>`).join('')}
       <div class="btnrow"><button class="btn red" id="anOrigin">${ic('target')}Fly to Escalos Fundeiros</button><button class="btn" id="anEN">${ic('route')}EN236-1</button></div>
@@ -457,7 +469,8 @@ function renderAnalysisReal() {
       <div class="an-row"><span>Meals served</span><span>${fmtInt(rc.record.military.meals)}</span></div></div>` : ''}
     <div class="an-sec"><h4>Data sources</h4>
       ${rc.record.sources.map((s2) => `<div class="an-row" style="display:block"><a href="${s2.url.startsWith('http') ? s2.url : '#'}" target="_blank" rel="noopener" style="color:var(--text)">${esc(s2.name)}</a></div>`).join('')}
-    </div>`;
+    </div></details>`;
+  DASH.wireSideAnalysis($('#tab-analysis'));
   $('#anOrigin').onclick = () => { const g = rc.meta.ignitions[0]; app.setTime(g.t + 0.5); app.flyTo(g.x, g.z, 4000, S.dim === '2d' ? 0.0001 : 0.9, S.dim === '2d' ? 0 : -0.3, 1.8); };
   $('#anEN').onclick = () => { const p = C.PLACES.en2361; app.setTime(T(17, 19, 5)); app.flyTo(p.x, p.z, 3500, S.dim === '2d' ? 0.0001 : 0.85, S.dim === '2d' ? 0 : 0.5, 1.8); };
 }
@@ -686,9 +699,18 @@ export function renderUnitHud(a, liveOnly) {
 }
 
 // ------------------------------------------------------------------ charts
+const SEL_KEY = 'firetrace.charts';
+let _sel = null;
+function chartSel() {
+  if (!_sel) { try { _sel = JSON.parse(localStorage.getItem(SEL_KEY)); } catch (e) { _sel = null; } }
+  if (!Array.isArray(_sel) || _sel.length !== 3) _sel = ['area', 'growth', 'weather'];
+  return _sel;
+}
+function setChartSel(i, id) { chartSel()[i] = id; try { localStorage.setItem(SEL_KEY, JSON.stringify(_sel)); } catch (e) { /* ignore */ } app.scheduleCharts(); }
 const DAY_TICKS = [[T(14, 12), 'Aug 14'], [T(15, 12), 'Aug 15'], [T(16, 12), 'Aug 16'], [T(17, 12), 'Aug 17'], [T(18, 6), 'Aug 18']];
 export function drawCharts(a, charts) {
   const f = app.fire; const t = S.time;
+  if (R()) DASH.redrawDashboard();
   if (R() && S.mode !== 'drones') return drawChartsReal(charts);
   const set = (i, title, meta) => { charts[i].title.textContent = title; charts[i].meta.textContent = meta || ''; };
   const X = [T(14, 6), T(18, 12)];
@@ -739,21 +761,13 @@ function drawChartsReal(charts) {
   const set = (i, title, meta) => { charts[i].title.textContent = title; charts[i].meta.textContent = meta || ''; };
   const X = [T(17, 12), T(22, 24)];
   const DT = [17, 18, 19, 20, 21, 22].map((d) => [T(d, 12), `Jun ${d}`]);
+  charts.forEach((c) => c.el.classList.toggle('pickable', S.mode === 'incident'));
   if (S.mode === 'incident') {
-    set(0, 'Burned Area (ha)', `${fmtInt(f.sampleSeries('area', t))} ha`); set(1, 'Growth Rate (ha/h)'); set(2, 'Elevation Profile · EN236-1');
-    const area = f.times.map((tt, i) => [tt, f.area[i]]);
-    charts[0].chart.draw({ x: X, y: [0, 50000], yTicks: [0, 25000, 50000], padL: 44, xTicks: DT, series: [{ pts: area, color: '#d0613e', fill: 'rgba(222,120,80,A)', splitAt: t, futureAlpha: 0.6 }], cursor: t, cursorY: f.sampleSeries('area', t) });
-    const ros = f.times.map((tt, i) => [tt, f.ros[i]]);
-    const mr = Math.ceil(Math.max(...f.ros) / 1000) * 1000;
-    charts[1].chart.draw({ x: X, y: [0, mr], yTicks: [0, mr / 2, mr], padL: 40, xTicks: DT, series: [{ pts: ros, color: '#c62f26', fill: 'rgba(214,80,70,A)', splitAt: t, futureAlpha: 0.5 }], cursor: t, cursorY: f.sampleSeries('ros', t) });
-    const pr = app.profile; const ys = pr.map((p) => p[1]);
-    const lo = Math.floor((Math.min(...ys) - 40) / 100) * 100, hi = Math.ceil((Math.max(...ys) + 40) / 100) * 100;
-    const L = app.profileLen / 1000; const ticksX = []; for (let k = 0; k <= L + 0.01; k += L > 10 ? 5 : L > 4 ? 2 : 1) ticksX.push([k, `${k}`]);
-    if (ticksX.length) ticksX[ticksX.length - 1][1] += ' km';
-    // marker: where the fire front is along the path
-    const pp = S.profilePath; let acc = 0, mk = null;
-    for (let i = 0; i < pp.length; i++) { if (i) acc += Math.hypot(pp[i][0] - pp[i - 1][0], pp[i][1] - pp[i - 1][1]); const a2 = f.arrivalAt(pp[i][0], pp[i][1]); if (a2 <= t && mk === null) mk = [acc / 1000, app.terrain.elev(pp[i][0], pp[i][1])]; }
-    charts[2].chart.draw({ x: [0, L], y: [lo, hi], yTicks: [lo, Math.round((lo + hi) / 200) * 100, hi], xTicks: ticksX, series: [{ pts: pr, color: '#5c7a4a', fill: 'rgba(110,145,90,A)', width: 1.4 }], marker: mk ? [mk[0], mk[1], '#d63a2a'] : null });
+    chartSel().forEach((id, i) => {
+      if (id === 'profile') { drawProfileReal(charts, i); return; }
+      const r = DASH.drawMetric(charts[i].chart, id, { compact: true });
+      if (r) set(i, r.title, r.meta);
+    });
   } else {
     const stepSeries = (key) => { const out = [[X[0], 0]]; let last = 0; rc.record.resources.forEach((r) => { if (r[key] === null || r[key] === undefined) return; out.push([r.t, last]); out.push([r.t, r[key]]); last = r[key]; }); out.push([X[1], last]); return out; };
     const r = rc.res; const v = (q) => (q === null ? '—' : fmtInt(q)); const A = rc.record.anpc;
@@ -781,11 +795,23 @@ function drawChartsReal(charts) {
     }
   }
 }
+function drawProfileReal(charts, pi) {
+  const f = app.fire; const t = S.time;
+  charts[pi].title.textContent = DASH.L('Elevation profile · EN236-1', 'Perfil de elevação · EN236-1'); charts[pi].meta.textContent = '';
+  const pr = app.profile; const ys = pr.map((p) => p[1]);
+  const lo = Math.floor((Math.min(...ys) - 40) / 100) * 100, hi = Math.ceil((Math.max(...ys) + 40) / 100) * 100;
+  const L = app.profileLen / 1000; const ticksX = []; for (let k = 0; k <= L + 0.01; k += L > 10 ? 5 : L > 4 ? 2 : 1) ticksX.push([k, `${k}`]);
+  if (ticksX.length) ticksX[ticksX.length - 1][1] += ' km';
+  // marker: where the fire front is along the path
+  const pp = S.profilePath; let acc = 0, mk = null;
+  for (let i = 0; i < pp.length; i++) { if (i) acc += Math.hypot(pp[i][0] - pp[i - 1][0], pp[i][1] - pp[i - 1][1]); const a2 = f.arrivalAt(pp[i][0], pp[i][1]); if (a2 <= t && mk === null) mk = [acc / 1000, app.terrain.elev(pp[i][0], pp[i][1])]; }
+  charts[pi].chart.draw({ x: [0, L], y: [lo, hi], yTicks: [lo, Math.round((lo + hi) / 200) * 100, hi], xTicks: ticksX, series: [{ pts: pr, color: '#5c7a4a', fill: 'rgba(110,145,90,A)', width: 1.4 }], marker: mk ? [mk[0], mk[1], '#d63a2a'] : null });
+}
 function exportCsv(i) {
   const c = app.charts[i]; const cfg = c.chart.cfg; if (!cfg) return;
   const rows = [['x', ...cfg.series.map((s, k) => `series${k}`)]];
   const s0 = cfg.series[cfg.series.length - 1].pts;
-  s0.forEach((p, k) => rows.push([S.mode === 'drones' || (S.mode === 'incident' && i === 2) ? p[0] : fmtTime(p[0]), ...cfg.series.map((s) => (s.pts[k] ? s.pts[k][1].toFixed(2) : ''))]));
+  s0.forEach((p, k) => rows.push([S.mode === 'drones' || (S.mode === 'incident' && (R() ? ['profile', 'fwi'].includes(chartSel()[i]) : i === 2)) ? p[0] : fmtTime(p[0]), ...cfg.series.map((s) => (s.pts[k] ? s.pts[k][1].toFixed(2) : ''))]));
   const blob = new Blob([rows.map((r) => r.join(',')).join('\n')], { type: 'text/csv' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${c.title.textContent.replace(/[^a-z0-9]+/gi, '_')}.csv`; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -894,6 +920,7 @@ function openTopMenu(name, anchor) {
       { label: 'Fullscreen', k: 'F', action: () => L.toggleFullscreen() },
     ],
     analysisMenu: [
+      ...(R() ? [{ label: DASH.L('Analysis dashboard', 'Painel de análise'), icon: 'chart', k: 'D', action: DASH.openDashboard }, { sep: true }] : []),
       { label: 'Measure distance', icon: 'ruler', k: 'M', action: () => L.startMeasure('measure') },
       { label: 'Draw elevation profile…', icon: 'route', action: () => { if (S.mode !== 'incident') L.setMode('incident'); L.startMeasure('profile'); } },
       { sep: true },

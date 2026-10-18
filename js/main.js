@@ -13,6 +13,7 @@ import { Drone, Aircraft, GroundUnit, makeRetardantSystem, pathAt, KT, MPH, FT }
 import { Chart } from './charts.js';
 import { hydrateIcons } from './icons.js';
 import * as UI from './ui.js';
+import * as DASH from './dash.js';
 import { loadReal, realUnits, headFilterFactory } from './real.js';
 import { initI18n } from './i18n.js';
 
@@ -124,7 +125,7 @@ function applyRealState(rc) {
   state.layers.roads.name = 'Roads (OSM)';
   const L = state.layers; const keep = { ...L };
   for (const k of Object.keys(L)) delete L[k];
-  Object.assign(L, { terrain: keep.terrain, imagery: keep.imagery, scar: keep.scar, spread: keep.spread, cti: { on: true, op: 1, name: 'CTI: Fatalities · PCO · Road Closures' }, hotspots: { on: true, op: 1, name: 'Satellite Hotspots (VIIRS/MODIS)' }, ign: keep.ign, wind: keep.wind, supp: keep.supp, structures: keep.structures, roads: keep.roads });
+  Object.assign(L, { terrain: keep.terrain, imagery: keep.imagery, scar: keep.scar, spread: keep.spread, cti: { on: true, op: 1, name: 'CTI: Fatalities · PCO · Road Closures' }, hotspots: { on: true, op: 1, name: 'Satellite Hotspots (VIIRS/MODIS)' }, munis: { on: false, op: 1, name: 'Municipal boundaries (OSM)' }, ign: keep.ign, wind: keep.wind, supp: keep.supp, structures: keep.structures, roads: keep.roads });
   L.supp.name = 'Air Drops (illustrative)';
   const TH = { Report: 'linear-gradient(135deg,#dfe4e8,#a9b2ba)', Paper: 'linear-gradient(135deg,#efe7da,#d8ccb9)', Data: 'linear-gradient(180deg,#e6eef3,#9fb7c8)', Sat: 'linear-gradient(135deg,#1b0638,#6a1b8a 45%,#f08c2b 75%,#fff2b0)' };
   state.evidence = [
@@ -154,7 +155,7 @@ function realEvents(rc) {
 
 async function init() {
   hydrateIcons();
-  initI18n(() => { if (!$('#modal').classList.contains('hidden') && $('.intro')) UI.showIntro(true); if (app.events) { app.scheduleCharts(); UI.renderFeed(app); } });
+  initI18n(() => { if (!$('#modal').classList.contains('hidden') && $('.intro')) UI.showIntro(true); if (app.events) { app.scheduleCharts(); UI.renderFeed(app); UI.onLangChange(); } });
   const rc = await loadReal(INCIDENT, ld);
   app.real = rc; rc.headFilter = headFilterFactory(rc);
   applyRealState(rc);
@@ -670,7 +671,7 @@ export function setTime(t, force) {
 }
 app.setTime = setTime;
 function drawOverlay() {
-  overlay.draw({ time: state.time, map: U.uMap.value, layers: state.layers, perimeter, drops, lines, structures: world.structures, hotspots: app.real ? app.real.hotspots : null, lineVersion: 0, dropsVersion: state.dropsVersion });
+  overlay.draw({ time: state.time, map: U.uMap.value, layers: state.layers, perimeter, drops, lines, structures: world.structures, hotspots: app.real ? app.real.hotspots : null, munis: app.real?.analysis?.muniOutlines || null, lineVersion: 0, dropsVersion: state.dropsVersion });
 }
 app.drawOverlay = drawOverlay;
 
@@ -1255,6 +1256,8 @@ function setupUI() {
     else if (e.key === 'ArrowRight') setTime(state.time + (e.shiftKey ? 6 : 1));
     else if (e.key === 'ArrowLeft') setTime(state.time - (e.shiftKey ? 6 : 1));
     else if (e.key === 'c' || e.key === 'C') cycleCam();
+    else if (e.key === 'Escape' && DASH.dashboardOpen()) DASH.closeDashboard();
+    else if ((e.key === 'd' || e.key === 'D') && app.real) { if (DASH.dashboardOpen()) DASH.closeDashboard(); else DASH.openDashboard(); }
     else if (e.key === 'Escape') { if (measure.active) finishMeasure(true); else if (state.pip.full) togglePipFull(false); else if (state.camMode === 'chase' || state.camMode === 'cockpit') setCamMode('overview'); UI.closeMenus(); }
     else if (e.key === 'l' || e.key === 'L') { state.labels = !state.labels; UI.toast(`Labels ${state.labels ? 'on' : 'off'}`); }
     else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
@@ -1411,7 +1414,8 @@ function frame(now) {
   renderer.setViewport(0, 0, viewport.clientWidth, viewport.clientHeight);
   renderer.clear();
   const pipVisible = state.mode === 'drones' && state.pip.open;
-  if (!(pipVisible && state.pip.full)) { world.cullTrees(camera); renderer.render(scene, camera); }
+  // the dashboard covers the map: skip the 3D render (and its GPU cost) while it is open
+  if (!(pipVisible && state.pip.full) && !DASH.dashboardOpen()) { world.cullTrees(camera); renderer.render(scene, camera); }
   if (pipVisible) { renderPip(clk); drawHud(clk); }
   // periodic UI
   acc.ui += dt; acc.hist += dt; acc.charts += dt; acc.hash += dt; acc.det += dt;

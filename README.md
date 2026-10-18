@@ -37,6 +37,11 @@ Open http://localhost:5178. It needs an internet connection for three.js (unpkg)
 - Map controls: compass (click to reset north), dynamic scale bar, zoom presets and fullscreen.
 - Timeline: play, pause, next-event, speed presets, scrubbing, event markers and an activity band. Charts show fire area, rate of spread and the elevation profile, solid for the past and dashed for the future. Click a chart to scrub. Each chart's ⋮ menu exports CSV.
 - Key Events: click one to jump the time and camera there. Use + Add to create a custom event.
+- **Analysis dashboard** (Analysis → Analysis dashboard, or key D): KPIs and charts with hover readouts.
+  - Charts: burned area against the official ICNF values, growth rate, spread speed, ERA5 temperature/humidity/wind, the Hot-Dry-Windy index, the June FWI computed from ERA5 against the SGIF value, FIRMS radiative power, and fatalities against fire arrival.
+  - Breakdowns: burn severity, land cover burned, terrain, and municipalities (click one to fly there).
+  - Validation table against the CTI fatality sites.
+- Each bottom chart can show any of these metrics: click its title. There is also a municipal boundaries layer.
 
 **Drones mode**: six drones (FT-01 to FT-06), each with its own flight pattern: perimeter mapping, head-fire orbit, spot-fire orbit, structure patrol, survey lines and comms relay. The live camera feed has these controls:
 - EO/IR toggle, with Ironbow or White-hot palettes

@@ -47,9 +47,9 @@ export async function loadReal(id, progress = () => {}) {
   const inflate = (f) => get(u(f)).then((r) => new Response(r.body.pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
   const VN = 1024;
   const preImg = loadBitmap(u('tex_pre.webp'));
-  const [meta, osm, record, icnf, demB, arrB, fuelB, cosB, info, outerB] = await Promise.all([
+  const [meta, osm, record, icnf, demB, arrB, fuelB, cosB, info, outerB, analysis] = await Promise.all([
     json('meta.json'), json('osm.json'), json('record.json'), json('icnf_perimeters.json').catch(() => null),
-    inflate('dem.z'), inflate('arrival.z'), inflate('fuel.z'), inflate('cos.z').catch(() => null), infoImage(u('info.webp'), VN), inflate('outer.z').catch(() => null)]);
+    inflate('dem.z'), inflate('arrival.z'), inflate('fuel.z'), inflate('cos.z').catch(() => null), infoImage(u('info.webp'), VN), inflate('outer.z').catch(() => null), json('analysis.json').catch(() => null)]);
   progress('Loading terrain & fire record', 0.1);
   setCalendar('Jun', 17);
   setGeo(meta.lat0, meta.lon0);
@@ -142,6 +142,7 @@ export async function loadReal(id, progress = () => {}) {
     fuel, veg, vegN: VN, cos: cosB ? new Uint8Array(cosB) : null, dnbr: info.dnbr, dnbrN: VN, infoImg: info.img, preImg,
     weatherAt, res, paths, imagery: { pre: u('tex_pre.webp'), post: u('tex_post.webp') },
     hotspots: meta.hotspots, dem, arr, icnf,
+    analysis,
     outer: outerB ? { h: new Uint16Array(outerB), n: 241, size: 150000 } : null,
     areaUnit: 'ha', liquid: 'L',
   };
