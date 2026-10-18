@@ -22,7 +22,7 @@ const PT = {
   'Ignition Probability': 'Probabilidade de ignição', 'Ignition Points (SGIF)': 'Pontos de ignição (SGIF)', 'Weather (Wind Vectors)': 'Meteorologia (vento)',
   'Weather (ERA5 Wind)': 'Meteorologia (vento ERA5)', 'Suppression (Drops & Line)': 'Supressão (descargas e linha)', 'Air Drops (illustrative)': 'Descargas aéreas (ilustrativo)',
   'Structures': 'Estruturas', 'Roads & Trails': 'Estradas e trilhos', 'Administrative Boundaries': 'Limites administrativos', 'Villages (OSM)': 'Aldeias (OSM)', 'Roads (OSM)': 'Estradas (OSM)',
-  'Satellite Hotspots (VIIRS/MODIS)': 'Focos de calor de satélite (VIIRS/MODIS)', 'CTI: Fatalities · PCO · Road Closures': 'CTI: vítimas · PCO · cortes de estrada', 'CTI: Fatalities · Command Post': 'CTI: vítimas · posto de comando', 'Road closures (CTI)': 'Cortes de estrada (CTI)', 'Fire history before 2017 (ICNF)': 'Histórico de fogo antes de 2017 (ICNF)', 'Burned again 2018–2025 (ICNF)': 'Voltou a arder 2018–2025 (ICNF)', 'Road closures': 'Cortes de estrada', 'Show or hide road closures': 'Mostrar ou ocultar os cortes de estrada',
+  'Satellite Hotspots (VIIRS/MODIS)': 'Focos de calor de satélite (VIIRS/MODIS)', 'CTI: Fatalities · PCO · Road Closures': 'CTI: vítimas · PCO · cortes de estrada', 'CTI: Fatalities · Command Post': 'CTI: vítimas · posto de comando', 'Road closures (CTI)': 'Cortes de estrada (CTI)', 'Save camera still (PNG)': 'Guardar imagem da câmara (PNG)', 'Fire history before 2017 (ICNF)': 'Histórico de fogo antes de 2017 (ICNF)', 'Burned again 2018–2025 (ICNF)': 'Voltou a arder 2018–2025 (ICNF)', 'Road closures': 'Cortes de estrada', 'Show or hide road closures': 'Mostrar ou ocultar os cortes de estrada',
   // overview / weather
   'Incident Overview': 'Resumo do incidente', 'Edit': 'Editar', 'Save': 'Guardar', 'Incident Name': 'Nome', 'Incident ID': 'ID do incidente', 'Location': 'Localização',
   'Start (Est.)': 'Início (est.)', 'End': 'Fim', 'Total Acres': 'Área total', 'Cause (Prelim.)': 'Causa (prelim.)', 'Analysis Status': 'Estado da análise', 'In Progress': 'Em curso',
@@ -118,7 +118,7 @@ const RULES = [
   [/^Still captured to Evidence · (.+)$/, 'Imagem guardada em Provas · $1'], [/^Event added · (.+)$/, 'Evento adicionado · $1'],
   [/^(\d+) pts · (.+) · Done to (set profile|finish)$/, (m, a, b, c) => `${a} pts · ${b} · Concluir para ${c === 'finish' ? 'terminar' : 'definir o perfil'}`],
   [/^Sentinel-2 · 8 Aug 2017 \(after\)$/, 'Sentinel-2 · 8 ago 2017 (depois)'], [/^Sentinel-2 · 14 Jun 2017 \(before\)$/, 'Sentinel-2 · 14 jun 2017 (antes)'],
-  [/^Spread model re-run · (.+) acres final$/, 'Modelo recalculado · $1 acres no final'], [/^Running spread model…$/, 'A correr o modelo…'],
+  [/^Camera still saved · (.+)$/, 'Imagem da câmara guardada · $1'], [/^Spread model re-run · (.+) acres final$/, 'Modelo recalculado · $1 acres no final'], [/^Running spread model…$/, 'A correr o modelo…'],
 ];
 const SUBS = [[/ slope · /g, ' de declive · '], [/ · gust (\d+)$/, ' · raj. $1'], [/ · arrived /, ' · chegados '], [/-facing$/g, ' (exposição)'], [/^(\d[\d,.]*) damaged · (\d+) heavy\/destroyed$/, '$1 danificados · $2 muito danificados/destruídos'],
   [/ while fleeing, /, ' em fuga, '], [/ on EN236-1\)/, ' na EN236-1)'], [/\(\+ Regadas /, '(+ Regadas '], [/^(\d[\d,]*) ha \(ICNF\) · /, '$1 ha (ICNF) · ']];

@@ -103,7 +103,7 @@
             <button class="pip-ic" id="pipZoomOut" title="Zoom out"><i class="ic" data-ic="minus"></i></button>
             <span class="pip-zoom" id="pipZoom">1.0×</span>
             <button class="pip-ic" id="pipZoomIn" title="Zoom in"><i class="ic" data-ic="plus"></i></button>
-            <button class="pip-ic" id="pipSnap" title="Capture still to Evidence"><i class="ic" data-ic="focus"></i></button>
+            <button class="pip-ic" id="pipSnap" title="Save camera still (PNG)"><i class="ic" data-ic="focus"></i></button>
             <button class="pip-ic" id="pipExpand" title="Full camera view"><i class="ic" data-ic="expand"></i></button>
             <button class="pip-ic" id="pipClose" title="Close feed"><i class="ic" data-ic="x"></i></button>
           </div>
@@ -167,15 +167,14 @@
       <div id="sideIncident" class="side-mode">
         <div class="card tabs-card">
           <div class="tabs" id="sideTabs">
-            <button data-tab="layers" class="on">Layers</button><button data-tab="analysis">Analysis</button><button data-tab="evidence">Evidence</button><button data-tab="notes">Notes</button>
+            <button data-tab="layers" class="on">Layers</button><button data-tab="analysis">Analysis</button><button data-tab="evidence">Evidence</button>
           </div>
           <div class="tab-body" id="tab-layers"></div>
           <div class="tab-body hidden" id="tab-analysis"></div>
           <div class="tab-body hidden" id="tab-evidence"></div>
-          <div class="tab-body hidden" id="tab-notes"></div>
         </div>
         <div class="card" id="overviewCard">
-          <div class="card-h"><b>Incident Overview</b><button class="link" id="ovEdit">Edit</button></div>
+          <div class="card-h"><b>Incident Overview</b></div>
           <div class="kv" id="overview"></div>
         </div>
         <div class="card" id="weatherCard">

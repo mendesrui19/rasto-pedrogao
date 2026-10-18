@@ -64,7 +64,6 @@ export const state = {
   dropsVersion: 0,
   profilePath: null,
 };
-try { state.notes = JSON.parse(localStorage.getItem('firetrace.notes') || '[]'); } catch (e) { /* storage unavailable */ }
 
 export const app = { state };
 window.__ft = app;
@@ -1102,13 +1101,13 @@ function labelsVisibleObjects(restore, saved) {
 app.snapshot = () => {
   feed.snapshot = (r) => {
     const dpr = renderer.getPixelRatio();
-    const cv = document.createElement('canvas'); cv.width = 320; cv.height = Math.round(320 * r.h / r.w);
+    const cv = document.createElement('canvas'); cv.width = Math.round(r.w * dpr); cv.height = Math.round(r.h * dpr);
     cv.getContext('2d').drawImage(canvas, r.x * dpr, r.y * dpr, r.w * dpr, r.h * dpr, 0, 0, cv.width, cv.height);
     const d = units.drones.find((q) => q.id === state.selDrone);
-    const url = cv.toDataURL('image/jpeg', 0.85);
-    state.evidence.unshift({ id: `EV-${String(100 + state.evidence.length).padStart(3, '0')}`, title: `${d.id} ${d.def.name} still · ${d.sensor.toUpperCase()}`, meta: `${fmtTime(state.time)} · ${fmtLatLon(d.camTarget.x, d.camTarget.z)}`, tag: 'Drone', thumb: `url(${url})`, img: url });
-    UI.renderEvidence(app);
-    UI.toast(`Still captured to Evidence · ${d.id}`);
+    // published site: the still is saved to the visitor's computer, the shared evidence list stays read-only
+    const a = document.createElement('a'); a.href = cv.toDataURL('image/png');
+    a.download = `firetrace_${d.id}_${d.sensor}_${fmtTime(state.time).replace(/[^0-9a-z]+/gi, '_')}.png`; a.click();
+    UI.toast(`Camera still saved · ${d.id}`);
   };
   const f = $('.pip-flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
 };

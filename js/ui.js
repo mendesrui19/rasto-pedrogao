@@ -3,7 +3,6 @@ import * as C from './core.js';
 import { clamp, fmtTime, fmtHM, fmtDay, fmtInt, fmtLatLon, compassName, T, timeParts, lerp, geoInfo } from './util.js';
 import { ic, hydrateIcons } from './icons.js';
 import { getLang } from './i18n.js';
-import { CAUSES } from './scenario.js';
 import * as DASH from './dash.js';
 import { KT, MPH, FT } from './units.js';
 
@@ -45,7 +44,6 @@ export function init(a) {
   renderOverview();
   renderAnalysis();
   renderEvidence();
-  renderNotes();
   renderDrones(app);
   renderResources(app);
   // tabs
@@ -53,7 +51,6 @@ export function init(a) {
     $$('#sideTabs button').forEach((q) => q.classList.toggle('on', q === b));
     $$('#sideIncident .tab-body').forEach((p) => p.classList.toggle('hidden', p.id !== `tab-${b.dataset.tab}`));
   }));
-  $('#ovEdit').addEventListener('click', toggleOverviewEdit);
   $('#wxMenu').addEventListener('click', (e) => showMenu(e.currentTarget, [
     { header: 'Show conditions' },
     { label: 'At cursor', check: S.wxAt === 'cursor', action: () => { S.wxAt = 'cursor'; updateWeather(app); } },
@@ -177,8 +174,7 @@ export function renderFeed(a) {
   const title = $('#feedTitle'), act = $('#feedAction'), list = $('#feedList');
   if (S.mode === 'incident') {
     title.textContent = 'Key Events';
-    act.innerHTML = '<button class="feed-add">+ Add</button>';
-    $('.feed-add', act).onclick = (e) => addEventDialog();
+    act.innerHTML = '';   // published, read-only: visitors cannot add events
     const evs = app.events.concat(S.customEvents).sort((p, q) => p.t - q.t);
     list.innerHTML = evs.map((ev, i) => `<div class="ev" data-i="${i}">
       <span class="ev-ic">${evIcon(ev)}</span><span>${esc(ev.name)}</span><span class="ev-t">${fmtTime(ev.t).replace(',', '')}</span></div>`).join('');
@@ -243,23 +239,7 @@ export function renderFeedHighlight() {
     if (badge && +badge.textContent !== n) renderFeed(app);
   }
 }
-function addEventDialog() {
-  modal(`<h3>Add key event</h3>
-    <div class="row"><span>Time</span><b>${fmtTime(S.time)}</b></div>
-    <div class="row"><span>Name</span><input id="evName" style="flex:1;margin-left:16px;padding:6px 8px;border:1px solid #d8d1c4;border-radius:5px;font:inherit" placeholder="e.g. Wind shift"/></div>
-    <div class="row"><span>Location</span><span class="muted">${S.hover ? fmtLatLon(S.hover.x, S.hover.z) : 'Current view centre'}</span></div>
-    <div class="foot"><button class="btn" data-close>Cancel</button><button class="btn red" id="evOk">Add event</button></div>`);
-  const inp = $('#evName'); inp.focus();
-  const ok = () => {
-    const name = inp.value.trim() || 'Observation';
-    const t = app.controls.target;
-    S.customEvents.push({ id: `c${Date.now()}`, name, t: S.time, icon: 'custom', custom: true, pos: S.hover ? { ...S.hover } : { x: t.x, z: t.z }, zoom: 5 });
-    closeModal(); renderTimelineMarkers(); renderFeed(app); toast(`Event added · ${fmtTime(S.time)}`);
-  };
-  $('#evOk').onclick = ok; inp.onkeydown = (e) => { if (e.key === 'Enter') ok(); };
-}
 
-// ------------------------------------------------------------------ layers
 function renderLayers() {
   const host = $('#tab-layers');
   host.innerHTML = Object.entries(S.layers).map(([k, L]) => `
@@ -313,20 +293,8 @@ const overviewData = () => R() ? [
   ['Cause (Prelim.)', 'Under Investigation'],
   ['Analysis Status', '<span class="status-dot"></span>In Progress'],
 ];
-let ovEditing = false, ovValues = null;
 function renderOverview() {
-  const vals = ovValues || overviewData();
-  $('#overview').innerHTML = vals.map(([k, v], i) => `<span>${k}</span><span data-i="${i}" ${ovEditing && i !== 7 ? 'contenteditable="true"' : ''}>${v}</span>`).join('');
-}
-function toggleOverviewEdit() {
-  if (ovEditing) {
-    const vals = ovValues || overviewData();
-    $$('#overview [data-i]').forEach((el) => { const i = +el.dataset.i; if (i !== 7) vals[i][1] = esc(el.textContent.trim()); });
-    ovValues = vals; toast('Incident overview saved');
-  }
-  ovEditing = !ovEditing; $('#ovEdit').textContent = ovEditing ? 'Save' : 'Edit';
-  renderOverview();
-  if (ovEditing) $('#overview [contenteditable]')?.focus();
+  $('#overview').innerHTML = overviewData().map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
 }
 
 // ------------------------------------------------------------------ weather
@@ -391,48 +359,7 @@ export function showTooltip(a, cx, cy, x, z) {
 
 // ------------------------------------------------------------------ analysis / evidence / notes
 export function onLangChange() { renderAnalysis(); if (DASH.dashboardOpen()) DASH.openDashboard(); }
-function renderAnalysis() {
-  if (R()) return renderAnalysisReal();
-  const f = app.fire;
-  const maxRos = Math.max(...f.ros); const iMax = f.ros.indexOf(maxRos);
-  let maxGrowth = 0, gT = 0; for (let i = 2; i < f.area.length; i++) { const g = f.area[i] - f.area[i - 2]; if (g > maxGrowth) { maxGrowth = g; gT = f.times[i]; } }
-  $('#tab-analysis').innerHTML = `
-    <div class="an-sec"><h4>Origin determination</h4>
-      <div class="an-row"><span>Ignition (est.)</span><b>Aug 14, 14:26 ± 12 min</b></div>
-      <div class="an-row"><span>Area of origin</span><span>${fmtLatLon(C.PLACES.ignition.x, C.PLACES.ignition.z)}</span></div>
-      <div class="an-row"><span>Confidence</span><b>82%</b></div><div class="conf"><i style="width:82%"></i></div>
-      <div class="an-row"><span>Indicators</span><span>Char depth, angle of char, protection</span></div>
-      <div class="btnrow"><button class="btn red" id="anOrigin">${ic('target')}Fly to origin</button><button class="btn" id="anProfile">${ic('route')}Profile path</button></div>
-    </div>
-    <div class="an-sec"><h4>Fire behavior</h4>
-      <div class="an-row"><span>Final area</span><b>${fmtInt(f.finalAcres)} acres</b></div>
-      <div class="an-row"><span>Peak rate of spread</span><b>${Math.round(maxRos)} ch/hr · ${fmtTime(f.times[iMax])}</b></div>
-      <div class="an-row"><span>Max growth (1 h)</span><b>${fmtInt(maxGrowth)} acres · ${fmtHM(gT)}</b></div>
-      <div class="an-row"><span>Spot fire</span><span>${fmtTime(C.T_SPOT)} · ~0.9 km ahead</span></div>
-      <div class="an-row"><span>Primary driver</span><span>SW wind + upslope alignment</span></div>
-      <div class="btnrow"><button class="btn dark" id="anRerun">${ic('refresh')}Re-run spread model</button></div>
-    </div>
-    <div class="an-sec"><h4>Cause hypotheses</h4>
-      ${CAUSES.map((c) => `<div class="an-row"><span>${c.name}</span><b>${Math.round(c.p * 100)}%</b></div><div class="conf"><i style="width:${c.p * 100}%"></i></div>`).join('')}
-    </div>`;
-  $('#anOrigin').onclick = () => { app.setTime(C.T_IGNITION + 0.4); app.flyTo(C.PLACES.ignition.x, C.PLACES.ignition.z, 2600, S.dim === '2d' ? 0.0001 : 0.9, S.dim === '2d' ? 0 : -0.3, 1.8); };
-  $('#anProfile').onclick = () => app.startMeasure('profile');
-  $('#anRerun').onclick = rerunDialog;
-}
-function rerunDialog() {
-  modal(`<h3>Re-run spread model</h3>
-    <div class="row"><span>Rate-of-spread factor</span><span><input type="range" id="rrRos" min="0.25" max="0.8" step="0.01" value="0.46"/> <b id="rrRosV">0.46</b></span></div>
-    <div class="row"><span>Wind influence</span><span><input type="range" id="rrWind" min="0.5" max="1.6" step="0.05" value="1"/> <b id="rrWindV">1.00</b></span></div>
-    <div class="row"><span>Wind ellipse eccentricity</span><span><input type="range" id="rrEcc" min="0.7" max="0.97" step="0.01" value="0.93"/> <b id="rrEccV">0.93</b></span></div>
-    <p class="muted" style="font-size:11px;margin:8px 0 0">Recomputes arrival times with a time-varying Dijkstra spread over the terrain (fuel, slope, diurnal weather), then redraws the burn, perimeter, charts and events.</p>
-    <div class="foot"><button class="btn" data-close>Cancel</button><button class="btn red" id="rrOk">Run model</button></div>`);
-  [['rrRos', 2], ['rrWind', 2], ['rrEcc', 2]].forEach(([id, d]) => { const el = $(`#${id}`); el.oninput = () => ($(`#${id}V`).textContent = (+el.value).toFixed(d)); });
-  $('#rrOk').onclick = () => {
-    const opts = { rosScale: +$('#rrRos').value, windScale: +$('#rrWind').value, ecc: +$('#rrEcc').value };
-    closeModal(); toast('Running spread model…');
-    setTimeout(() => app.rerunModel(opts), 30);
-  };
-}
+function renderAnalysis() { renderAnalysisReal(); }
 function renderAnalysisReal() {
   const rc = R(); const f = app.fire;
   const maxG = Math.max(...f.ros); const iG = f.ros.indexOf(maxG);
@@ -486,46 +413,15 @@ function renderAnalysisReal() {
 export function renderEvidence() {
   const host = $('#tab-evidence');
   host.innerHTML = `${S.evidence.map((e, i) => `<div class="ev-card" data-i="${i}"><span class="ev-thumb" style="background-image:${e.thumb};background:${e.thumb.startsWith('url') ? '' : e.thumb};${e.thumb.startsWith('url') ? `background-image:${e.thumb}` : ''}"></span><div><b>${esc(e.title)}</b><small>${esc(e.meta)}</small><span class="tag">${e.id} · ${e.tag}</span></div></div>`).join('')}
-    <button class="small-btn" id="evAdd">+ Add evidence</button>`;
+`;
   $$('.ev-card', host).forEach((el) => el.addEventListener('click', () => {
     const e = S.evidence[+el.dataset.i];
     modal(`<h3>${esc(e.title)}</h3>${e.img ? `<img src="${e.img}" style="width:100%;border-radius:6px;margin-bottom:8px"/>` : `<div style="height:140px;border-radius:6px;background:${e.thumb};margin-bottom:8px"></div>`}
       <div class="row"><span>Evidence ID</span><b>${e.id}</b></div><div class="row"><span>Type</span><span>${e.tag}</span></div><div class="row"><span>Details</span><span>${esc(e.meta)}</span></div>
       <div class="row"><span>Chain of custody</span><span>Logged · sealed</span></div><div class="foot"><button class="btn" data-close>Close</button></div>`);
   }));
-  $('#evAdd').onclick = () => {
-    modal(`<h3>Add evidence</h3><div class="row"><span>Title</span><input id="evT" style="flex:1;margin-left:16px;padding:6px 8px;border:1px solid #d8d1c4;border-radius:5px;font:inherit"/></div>
-      <div class="row"><span>Type</span><select id="evK"><option>Photo</option><option>Physical</option><option>Statement</option><option>Data</option><option>Report</option></select></div>
-      <div class="foot"><button class="btn" data-close>Cancel</button><button class="btn red" id="evS">Add</button></div>`);
-    $('#evT').focus();
-    $('#evS').onclick = () => {
-      const t = $('#evT').value.trim(); if (!t) return;
-      S.evidence.unshift({ id: `EV-${String(100 + S.evidence.length).padStart(3, '0')}`, title: t, meta: `Added ${new Date().toLocaleString()}`, tag: $('#evK').value, thumb: 'linear-gradient(135deg,#e4ded4,#cfc7ba)' });
-      closeModal(); renderEvidence();
-    };
-  };
-}
-function renderNotes() {
-  const host = $('#tab-notes');
-  host.innerHTML = `<textarea class="notes-in" id="noteIn" placeholder="Add an investigation note at ${fmtTime(S.time)}…"></textarea>
-    <button class="small-btn" id="noteAdd">Add note</button>
-    <div id="noteList">${S.notes.slice().reverse().map((n, i) => `<div class="note" data-i="${S.notes.length - 1 - i}"><button class="x" title="Delete">×</button><small>${fmtTime(n.t)} · ${new Date(n.created).toLocaleDateString()}</small>${esc(n.text)}</div>`).join('') || '<div class="muted" style="padding:8px 2px;font-size:11px">No notes yet. Notes are pinned to the timeline position.</div>'}</div>`;
-  $('#noteAdd').onclick = () => {
-    const v = $('#noteIn').value.trim(); if (!v) return;
-    S.notes.push({ text: v, t: S.time, created: Date.now() });
-    try { localStorage.setItem('firetrace.notes', JSON.stringify(S.notes)); } catch (e) { /* ignore */ }
-    renderNotes();
-  };
-  $$('.note', host).forEach((el) => {
-    el.addEventListener('click', (e) => {
-      const i = +el.dataset.i;
-      if (e.target.classList.contains('x')) { S.notes.splice(i, 1); try { localStorage.setItem('firetrace.notes', JSON.stringify(S.notes)); } catch (er) { /* ignore */ } renderNotes(); return; }
-      app.setTime(S.notes[i].t);
-    });
-  });
 }
 
-// ------------------------------------------------------------------ drones
 export function renderDrones() {
   const list = $('#droneList'); if (!app.units) return;
   const ds = app.units.drones;
@@ -559,7 +455,7 @@ function renderDroneDetail() {
         <span>Position</span><span>${fmtLatLon(d.pos.x, d.pos.z)}</span>
         <span>Gimbal</span><span>${Math.round(d.gimbalHdg ?? 0)}° · ${Math.round(d.gimbalPitch ?? 0)}° · ${d.zoom.toFixed(1)}×</span>
       </div>
-      <div class="btnrow"><button class="btn red" id="ddFull">${ic('expand')}${S.pip.full && S.pip.open ? 'Exit full view' : 'Full camera view'}</button><button class="btn ${d.sensor === 'ir' ? 'dark' : ''}" id="ddTherm">Thermal</button><button class="btn" id="ddSnap" title="Capture still">${ic('camera')}</button></div>
+      <div class="btnrow"><button class="btn red" id="ddFull">${ic('expand')}${S.pip.full && S.pip.open ? 'Exit full view' : 'Full camera view'}</button><button class="btn ${d.sensor === 'ir' ? 'dark' : ''}" id="ddTherm">Thermal</button><button class="btn" id="ddSnap" title="Save camera still (PNG)">${ic('camera')}</button></div>
     </div>`;
   $('#ddFull').onclick = () => { if (!S.pip.open) { S.pip.open = true; $('#pip').classList.remove('hidden'); } app.togglePipFull(); };
   $('#ddTherm').onclick = () => { d.sensor = d.sensor === 'ir' ? 'eo' : 'ir'; if (!S.pip.open) { S.pip.open = true; $('#pip').classList.remove('hidden'); } updatePip(); renderDroneDetail(); };
@@ -934,7 +830,6 @@ function openTopMenu(name, anchor) {
       { label: 'Draw elevation profile…', icon: 'route', action: () => { if (S.mode !== 'incident') L.setMode('incident'); L.startMeasure('profile'); } },
       { sep: true },
       { label: 'Fly to origin area', icon: 'target', action: () => { L.setTime(C.T_IGNITION + 0.4); L.flyTo(C.PLACES.ignition.x, C.PLACES.ignition.z, 2600, S.dim === '2d' ? 0.0001 : 0.9, S.dim === '2d' ? 0 : -0.3, 1.8); } },
-      { label: 'Re-run spread model…', icon: 'refresh', action: rerunDialog },
       { label: 'Origin & cause summary', icon: 'file', action: () => { if (S.mode !== 'incident') L.setMode('incident'); $('#sideTabs [data-tab=analysis]').click(); } },
     ],
     shareMenu: [
@@ -960,9 +855,8 @@ function exportReport() {
   w.document.write(`<!doctype html><title>Pedrógão Grande 2017 — FireTrace report</title><style>body{font:14px/1.5 Inter,system-ui,sans-serif;max-width:760px;margin:40px auto;color:#2a2520}h1{font-size:22px}td{padding:4px 12px 4px 0}th{text-align:left;color:#777;font-weight:500;padding-right:12px}</style>
     <h1>Pedrógão Grande + Góis · 17–22 Jun 2017</h1><p>Leiria / Coimbra, Portugal · illustrative reconstruction · generated ${new Date().toLocaleString()}</p>
     <table>${overviewData().map(([k, v]) => `<tr><th>${k}</th><td>${v.replace(/<[^>]+>/g, '')}</td></tr>`).join('')}</table>
-    <h2>Key events</h2><table>${app.events.concat(S.customEvents).map((e) => `<tr><td>${fmtTime(e.t)}</td><td>${esc(e.name)}</td></tr>`).join('')}</table>
+    <h2>Key events</h2><table>${app.events.map((e) => `<tr><td>${fmtTime(e.t)}</td><td>${esc(e.name)}</td></tr>`).join('')}</table>
     <h2>Fire behaviour</h2><p>Final modeled area ${fmtInt(f.finalAcres)} acres. Peak rate of spread ${Math.round(Math.max(...f.ros))} chains/hr.</p>
-    <h2>Notes</h2>${S.notes.map((n) => `<p><b>${fmtTime(n.t)}</b> — ${esc(n.text)}</p>`).join('') || '<p>No notes.</p>'}
     <script>setTimeout(()=>print(),300)<\/script>`);
   w.document.close();
 }
