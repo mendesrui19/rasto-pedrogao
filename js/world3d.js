@@ -63,7 +63,7 @@ const terrainFS = /* glsl */`
 uniform float uTime, uClock, uMap, uThermal, uImagery, uShadeAmt, uScar, uSpread, uIgn, uFogDensity, uHalf, uFireOn;
 uniform vec2 uIgnPos, uIgnPos2, uGridStep, uGridOff;
 uniform float uReal;
-uniform vec3 uFogColor;
+uniform vec3 uFogColor, uSunDir;
 uniform sampler2D uOverlayTex, uArrTex, uColorTex, uInfoTex;
 varying vec3 vW; varying vec3 vView; varying vec3 vN;
 #ifdef OUTER
@@ -89,6 +89,17 @@ void main(){
   // close range micro detail
   float near = 1.0 - smoothstep(600.0, 3000.0, dist);
   col *= mix(1.0, 0.86 + 0.28 * fbm3(xz / 7.0), near * (1.0 - water));
+  // close-range relief: sun-lit procedural micro-terrain (gullies, ribs) below the 24 m DEM resolution
+  float nearR = 1.0 - smoothstep(800.0, 4500.0, dist);
+  if (nearR > 0.0) {
+    float h0 = fbm3(xz / 70.0), hx = fbm3((xz + vec2(8.0, 0.0)) / 70.0), hz = fbm3((xz + vec2(0.0, 8.0)) / 70.0);
+    vec3 dn = normalize(vec3((h0 - hx) * 9.0, 1.0, (h0 - hz) * 9.0));
+    float dl = dot(dn, normalize(uSunDir)) - dot(vec3(0.0, 1.0, 0.0), normalize(uSunDir));
+    col *= 1.0 + clamp(dl, -0.4, 0.4) * 0.55 * nearR * (1.0 - water) * uReal;
+  }
+  // canopy shadow: forested ground reads as darker masses under the trees
+  float canopy = smoothstep(0.15, 0.85, info.r) * uReal * (1.0 - water);
+  col *= 1.0 - canopy * (0.22 + 0.12 * vnoise(xz / 40.0));
 #endif
   col = mix(vec3(0.80, 0.77, 0.72) * (0.5 + 0.55 * shade), col, uShadeAmt);
 
@@ -98,37 +109,47 @@ void main(){
 
 #ifndef OUTER
   // ---------------- fire -----------------
-  vec4 at = texture2D(uArrTex, uv);
-  float young = clamp((uTime - at.r) / 4.0, 0.25, 1.0);
-  float arr = at.r + ((fbm3(xz / 160.0) - 0.5) * 1.4 + (vnoise(xz / 28.0) - 0.5) * 0.4) * young;
-  float dt = uTime - arr;
-  float burned = step(0.0, dt) * step(at.r, 900.0) * uFireOn;
-  burnedAmt = burned;
-  float sev = mix(fbm3(xz / 260.0 + 7.0), smoothstep(0.1, 0.75, info.b) * 0.85 + fbm3(xz / 90.0) * 0.15, uReal);
-  vec3 scar = mix(vec3(0.27, 0.25, 0.24), vec3(0.45, 0.27, 0.21), smoothstep(0.35, 0.75, sev));
-  scar = mix(scar, vec3(0.20, 0.19, 0.19), smoothstep(0.6, 0.9, fbm3(xz / 55.0)));
-  scar = mix(scar, mix(vec3(0.50, 0.40, 0.31), vec3(0.15, 0.14, 0.14), smoothstep(0.15, 0.9, sev)), uReal);
-  scar *= 0.55 + 0.75 * shade;
-  // recently burned areas keep a reddish cast
-  scar = mix(scar, scar * vec3(1.35, 0.8, 0.65), (1.0 - smoothstep(0.0, 10.0, dt)) * 0.7);
-  col = mix(col, scar, burned * uScar * 0.92 * (1.0 - water));
-
-  // active front glow + embers
-  float front = burned * (1.0 - smoothstep(0.0, 1.1, dt));
-  float fl = 0.65 + 0.35 * sin(uClock * 9.0 + hash12(floor(xz / 18.0)) * 40.0);
-  float edge = burned * (1.0 - smoothstep(0.0, 0.35, dt));
-  vec3 glow = mix(vec3(1.0, 0.28, 0.05), vec3(1.0, 0.78, 0.32), edge);
-  col = mix(col, glow, clamp(front * 0.85 * fl * uSpread, 0.0, 1.0));
-  float emb = burned * (1.0 - smoothstep(0.5, 7.0, dt)) * step(0.82, vnoise(xz / 9.0 + floor(uClock * 2.0) * 0.0));
-  col = mix(col, vec3(0.95, 0.28, 0.08), emb * 0.55 * uSpread * fl);
-  frontAmt = front;
-
-  // isochrones (modeled spread) every 6 h
-  float iso = abs(fract((at.r + 0.0) / 6.0 + 0.5) - 0.5) * 6.0;
+  // domain-warped lookup: breaks the straight 125 m cell edges of the arrival grid into organic perimeters
+  vec2 warp = (vec2(vnoise(xz / 320.0), vnoise(xz / 320.0 + 5.3)) - 0.5) * 150.0;
+  vec4 at = texture2D(uArrTex, (xz + warp + uHalf) / (2.0 * uHalf));
+  float dt = 1e3;
   float isoW = fwidth(at.r) * 0.9 + 0.02;
-  float isoLine = (1.0 - smoothstep(isoW * 0.5, isoW, iso)) * step(at.r, uTime) * step(at.r, 900.0);
-  float dash = step(0.5, fract((xz.x + xz.y) / 90.0));
-  col = mix(col, vec3(0.98, 0.55, 0.25), isoLine * dash * 0.6 * uSpread * (1.0 - uMap));
+  // the whole fire block only runs where the cell burns by now (most of the map never does)
+  if (at.b > 0.15 && at.r - 1.0 < uTime) {
+    float young = clamp((uTime - at.r) / 4.0, 0.25, 1.0);
+    float arr = at.r + ((fbm3(xz / 160.0) - 0.5) * 1.4 + (vnoise(xz / 28.0) - 0.5) * 0.4) * young;
+    dt = uTime - arr;
+    float inside = step(0.5 + (vnoise(xz / 60.0) - 0.5) * 0.35, at.b);
+    float burned = step(0.0, dt) * inside * uFireOn;
+    burnedAmt = burned;
+    float sev = mix(fbm3(xz / 260.0 + 7.0), smoothstep(0.1, 0.75, info.b) * 0.85 + fbm3(xz / 90.0) * 0.15, uReal);
+    vec3 scar = mix(vec3(0.27, 0.25, 0.24), vec3(0.45, 0.27, 0.21), smoothstep(0.35, 0.75, sev));
+    scar = mix(scar, vec3(0.20, 0.19, 0.19), smoothstep(0.6, 0.9, fbm3(xz / 55.0)));
+    scar = mix(scar, mix(vec3(0.50, 0.40, 0.31), vec3(0.15, 0.14, 0.14), smoothstep(0.15, 0.9, sev)), uReal);
+    scar *= 0.55 + 0.75 * shade;
+    // recently burned areas keep a reddish cast
+    scar = mix(scar, scar * vec3(1.35, 0.8, 0.65), (1.0 - smoothstep(0.0, 10.0, dt)) * 0.7);
+    col = mix(col, scar, burned * uScar * 0.92 * (1.0 - water));
+
+    // active front glow + embers
+    // narrow flaming band with a smooth, drifting flicker (no per-cell blocks)
+    float front = burned * (1.0 - smoothstep(0.0, 0.55, dt));
+    float fn = fbm3(xz / 45.0 + vec2(uClock * 0.35, -uClock * 0.2));
+    float fl = 0.62 + 0.38 * sin(uClock * 7.0 + fn * 14.0);
+    float edge = burned * (1.0 - smoothstep(0.0, 0.18, dt));
+    vec3 glow = mix(vec3(1.0, 0.28, 0.05), vec3(1.0, 0.78, 0.32), edge);
+    col = mix(col, glow, clamp(front * 0.85 * fl * uSpread, 0.0, 1.0));
+    float emb = burned * (1.0 - smoothstep(0.5, 7.0, dt)) * step(0.82, vnoise(xz / 9.0 + floor(uClock * 2.0) * 0.0));
+    col = mix(col, vec3(0.95, 0.28, 0.08), emb * 0.55 * uSpread * fl);
+    frontAmt = front;
+
+    // isochrones (modeled spread) every 6 h
+    float iso = abs(fract((at.r + 0.0) / 6.0 + 0.5) - 0.5) * 6.0;
+    float isoLine = (1.0 - smoothstep(isoW * 0.5, isoW, iso)) * step(at.r, uTime) * inside;
+    float dash = step(0.5, fract((xz.x + xz.y) / 90.0));
+    col = mix(col, vec3(0.98, 0.55, 0.25), isoLine * dash * 0.6 * uSpread * (1.0 - uMap));
+    heat += burned * (0.06 + 0.16 * exp(-max(dt, 0.0) / 10.0)) + front * 0.9 * fl + emb * 0.3;
+  }
 
   // ignition probability
   float dI = min(length(xz - uIgnPos), length(xz - uIgnPos2));
@@ -136,7 +157,6 @@ void main(){
   float rings = smoothstep(0.75, 1.0, sin(dI / 22.0 - uClock * 3.0)) * (1.0 - smoothstep(80.0, 420.0, dI));
   col = mix(col, vec3(0.93, 0.18, 0.08), clamp(ip * 0.55 + rings * 0.35, 0.0, 0.85) * uIgn);
 
-  heat += burned * (0.06 + 0.16 * exp(-max(dt, 0.0) / 10.0)) + front * 0.9 * fl + emb * 0.3;
   heat = mix(heat, 0.03, water);
 #endif
 
@@ -559,7 +579,16 @@ export class World {
       if (this.real) {
         const cx = clamp(x, -HALF, HALF), cz = clamp(z, -HALF, HALF);
         const out = Math.hypot(x - cx, z - cz);
-        e = this.terrain.elev(cx, cz) * (1 - smoothstep(0, 30000, out)) + 350 * smoothstep(0, 30000, out) + 120 * n1(x / 4000, z / 4000) * smoothstep(0, 4000, out);
+        const OR = CORE.REAL.outer;
+        if (OR) {
+          // real Copernicus relief out to 75 km (Serra da Lousã, Estrela, the coast), blended into the domain edge
+          const fx = clamp((x + OR.size / 2) / OR.size * (OR.n - 1), 0, OR.n - 1.001), fz = clamp((z + OR.size / 2) / OR.size * (OR.n - 1), 0, OR.n - 1.001);
+          const i0 = Math.floor(fx), j0 = Math.floor(fz), tx = fx - i0, tz = fz - j0, H = OR.h, N = OR.n;
+          const eo = lerp(lerp(H[j0 * N + i0], H[j0 * N + i0 + 1], tx), lerp(H[(j0 + 1) * N + i0], H[(j0 + 1) * N + i0 + 1], tx), tz);
+          e = lerp(this.terrain.elev(cx, cz), eo, smoothstep(0, 2500, out));
+        } else {
+          e = this.terrain.elev(cx, cz) * (1 - smoothstep(0, 30000, out)) + 350 * smoothstep(0, 30000, out) + 120 * n1(x / 4000, z / 4000) * smoothstep(0, 4000, out);
+        }
       } else {
         e = edge ? this.terrain.elev(x, z) : rawElev(x, z);
         const far = smoothstep(14000, 42000, Math.max(Math.abs(x), Math.abs(z)));
@@ -568,7 +597,9 @@ export class World {
       pos[k * 3] = x; pos[k * 3 + 1] = (inside ? e - 120 : e) - BASE; pos[k * 3 + 2] = z;
       el[k] = e;
       const v = this.terrain.treeDensity(clamp(x, -HALF, HALF), clamp(z, -HALF, HALF)) * 0.4 + (n1(x / 3000, z / 3000) * 0.5 + 0.5) * 0.6;
-      const c = this.real ? [lerp(0.55, 0.30, v), lerp(0.52, 0.36, v), lerp(0.40, 0.24, v)] : [lerp(0.86, 0.45, v * 0.8), lerp(0.73, 0.47, v * 0.8), lerp(0.52, 0.31, v * 0.8)];
+      const sea = this.real && CORE.REAL.outer && e < 2 && !edge;
+      const hi = smoothstep(500, 1400, e);
+      const c = sea ? [0.42, 0.55, 0.62] : this.real ? [lerp(lerp(0.60, 0.33, v), 0.62, hi * 0.5), lerp(lerp(0.53, 0.36, v), 0.56, hi * 0.5), lerp(lerp(0.40, 0.24, v), 0.48, hi * 0.5)] : [lerp(0.86, 0.45, v * 0.8), lerp(0.73, 0.47, v * 0.8), lerp(0.52, 0.31, v * 0.8)];
       col[k * 3] = c[0]; col[k * 3 + 1] = c[1]; col[k * 3 + 2] = c[2];
     }
     const idx = new Uint32Array((ON - 1) * (ON - 1) * 6); let o = 0;
@@ -653,11 +684,11 @@ export class World {
     if (!this.treeChunks || !this.treesA.visible) return;
     const cp = cam.position;
     const h = Math.max(0, cp.y - this.groundY(cp.x, cp.z));
-    const near = 4500 + h * 0.25, far = 20000 + h * 0.3;
+    const near = 7000, far = 26000;
     for (const mesh of this.treeChunks) {
       const u = mesh.userData;
       const d = Math.max(0, Math.hypot(cp.x - u.cx, cp.z - u.cz) - u.r);
-      const dd = Math.hypot(d, h * 0.6);
+      const dd = Math.hypot(d, h);
       const f = dd <= near ? 1 : dd >= far ? 0 : Math.pow(1 - (dd - near) / (far - near), 1.6);
       const n = Math.round(u.n * Math.max(f, 0.04));
       mesh.count = n; mesh.visible = f > 0;
@@ -752,8 +783,26 @@ export class World {
         const g = Math.hypot(gx, gz); // hours per cell
         inten = clamp(1 - (g - 0.08) / 0.7, 0, 1);
       }
-      d[c * 4 + 1] = inten; d[c * 4 + 2] = 0; d[c * 4 + 3] = 1;
+      d[c * 4 + 1] = inten; d[c * 4 + 2] = v < UNBURNED ? 1 : 0; d[c * 4 + 3] = 1;
     }
+    // unburned cells bordering the scar take their latest burned neighbour's time, so the arrival field interpolates
+    // smoothly across the perimeter; the perimeter itself comes from the blurred burn mask in b
+    for (let j = 0; j < FN; j++) for (let i = 0; i < FN; i++) {
+      const c = j * FN + i; if (a[c] < UNBURNED) continue;
+      let m = -1;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const jj = j + dj, ii = i + di; if (jj < 0 || ii < 0 || jj >= FN || ii >= FN) continue;
+        const v = a[jj * FN + ii]; if (v < UNBURNED && v > m) m = v;
+      }
+      if (m >= 0) d[c * 4] = m + 0.25;
+    }
+    const mb = new Float32Array(FN * FN);
+    for (let j = 0; j < FN; j++) for (let i = 0; i < FN; i++) {
+      let s2 = 0, n = 0;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const jj = j + dj, ii = i + di; if (jj < 0 || ii < 0 || jj >= FN || ii >= FN) continue; s2 += d[(jj * FN + ii) * 4 + 2] * (dj || di ? 1 : 2); n += dj || di ? 1 : 2; }
+      mb[j * FN + i] = s2 / n;
+    }
+    for (let c = 0; c < FN * FN; c++) d[c * 4 + 2] = mb[c];
     // blur intensity
     const tmp = new Float32Array(FN * FN);
     for (let pass = 0; pass < 3; pass++) {

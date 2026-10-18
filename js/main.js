@@ -178,7 +178,7 @@ async function init() {
   app.world = world; app.terrain = terrain;
   await world.build(ld);
   ld('Planting trees', 0.68); await tick();
-  const nTrees = app.real ? (state.quality === 'low' ? 40000 : 90000) : (state.quality === 'low' ? 26000 : 52000);
+  const nTrees = app.real ? (state.quality === 'low' ? 80000 : 200000) : (state.quality === 'low' ? 26000 : 52000);
   const trees = C.buildTrees(terrain, fire, nTrees, 5, world.veg ? (x, z) => world._bil(world.veg, x, z) : null);
   world.buildTrees(trees); world.treeList = trees;
   scene.add(world.group);

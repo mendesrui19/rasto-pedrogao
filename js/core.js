@@ -456,12 +456,12 @@ export function buildTrees(terrain, fire, count = 52000, seed = 5, densFn = null
     const d = densFn ? densFn(x, z) : terrain.treeDensity(x, z);
     // denser near the centre so close-ups look rich
     const centre = MODE === 'real' ? 1 : 1 - smoothstep(6000, 10000, Math.hypot(x - 300, z + 400));
-    if (rnd() > Math.pow(d, 2.6) * (0.3 + 0.7 * centre)) continue;
+    if (rnd() > Math.pow(d, MODE === 'real' ? 1.7 : 2.6) * (0.3 + 0.7 * centre)) continue;
     let near = false;
     for (const r of ROADS) { if (r.bbox && (x < r.bbox[0] - 30 || x > r.bbox[2] + 30 || z < r.bbox[1] - 30 || z > r.bbox[3] + 30)) continue; if (distToPolyline(x, z, r.pts, 8).d < 22) { near = true; break; } }
     if (near) continue;
     const conifer = rnd() < 0.35 + d * 0.5;
-    const s = conifer ? 14 + rnd() * 16 : 10 + rnd() * 9;
+    const s = (conifer ? 14 + rnd() * 16 : 10 + rnd() * 9) * (MODE === 'real' ? 1.35 : 1);
     trees.push({ x, z, y: terrain.elev(x, z), s, conifer, rot: rnd() * 6.28, arr: fire ? fire.arrivalAt(x, z) : UNBURNED, tint: rnd() });
   }
   return trees;
