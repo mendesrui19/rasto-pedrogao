@@ -170,6 +170,7 @@ async function init() {
   world = new World(terrain, fire, renderer);
   app.world = world; app.terrain = terrain;
   await world.build(ld);
+  buildFireTrack();
   ld('Planting trees', 0.68); await tick();
   const nTrees = app.real ? (state.quality === 'low' ? 80000 : 200000) : (state.quality === 'low' ? 26000 : 52000);
   const trees = C.buildTrees(terrain, fire, nTrees, 5, world.veg ? (x, z) => world._bil(world.veg, x, z) : null);
@@ -836,7 +837,60 @@ function cycleCam() {
   setCamMode(order[(order.indexOf(cur) + 1) % order.length]);
 }
 
+// ------------------------------------------------------------------ fire-following camera (playback)
+// Precomputed every 15 min from the arrival field: centre and spread of the active front (cells that burned in the
+// last hour). During playback the camera glides to it, zooms with the front's size and slowly orbits; any manual
+// camera move pauses it until play is pressed again.
+const fireCam = { on: true, engaged: false, track: null, az: 0 };
+try { fireCam.on = localStorage.getItem('firetrace.follow') !== '0'; } catch (e) { /* storage unavailable */ }
+function buildFireTrack() {
+  // burned cells sorted by arrival + prefix sums of x, z, x², z² → centroid and spread of any time window in O(1)
+  const a = fire.arr, N = C.FN, FC = C.FCELL, H = C.HALF;
+  const idx = []; for (let k = 0; k < N * N; k++) if (a[k] < C.UNBURNED) idx.push(k);
+  idx.sort((p, q) => a[p] - a[q]);
+  const n = idx.length, T = new Float64Array(n), SX = new Float64Array(n + 1), SZ = new Float64Array(n + 1), SXX = new Float64Array(n + 1), SZZ = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) {
+    const k = idx[i], x = -H + ((k % N) + 0.5) * FC, z = -H + (Math.floor(k / N) + 0.5) * FC; T[i] = a[k];
+    SX[i + 1] = SX[i] + x; SZ[i + 1] = SZ[i] + z; SXX[i + 1] = SXX[i] + x * x; SZZ[i + 1] = SZZ[i] + z * z;
+  }
+  const upper = (v) => { let lo = 0, hi = n; while (lo < hi) { const m = (lo + hi) >> 1; if (T[m] <= v) lo = m + 1; else hi = m; } return lo; };
+  const out = []; let last = null;
+  for (let t = C.T_IGNITION; t <= C.T_END; t += 0.25) {
+    const i0 = upper(t - 1), i1 = upper(t), c = i1 - i0;
+    if (c >= 3) {
+      const mx = (SX[i1] - SX[i0]) / c, mz = (SZ[i1] - SZ[i0]) / c;
+      const v = (SXX[i1] - SXX[i0]) / c - mx * mx + (SZZ[i1] - SZZ[i0]) / c - mz * mz;
+      last = { t, x: mx, z: mz, r: Math.sqrt(Math.max(v, 0)) };
+    } else if (last) last = { ...last, t };
+    if (last) out.push(last);
+  }
+  fireCam.track = out;
+}
+function fireTrackAt(t) {
+  const tr = fireCam.track; if (!tr || !tr.length) return null;
+  if (t <= tr[0].t) return tr[0];
+  const i = Math.min(tr.length - 2, Math.floor((t - tr[0].t) / 0.25)); const p = tr[i], q = tr[i + 1];
+  const f = clamp((t - p.t) / 0.25, 0, 1);
+  return { x: lerp(p.x, q.x, f), z: lerp(p.z, q.z, f), r: lerp(p.r, q.r, f) };
+}
+function updateFireCam(dt) {
+  if (!fireCam.on || !fireCam.engaged || !state.playing || state.mode !== 'incident' || !['orbit', 'overview'].includes(state.camMode) || tweens.length || DASH.dashboardOpen()) return;
+  const p = fireTrackAt(state.time); if (!p) return;
+  const k = 1 - Math.exp(-dt * 0.9);
+  const want = new THREE.Vector3(p.x, world.groundY(p.x, p.z), p.z);
+  controls.target.lerp(want, k);
+  const s = camSph();
+  const flat = state.dim === '2d';
+  const wantR = clamp(p.r * 3.4 + 3200, 4200, 30000);
+  s.radius = lerp(s.radius, wantR, 1 - Math.exp(-dt * 0.5));
+  if (!flat) { s.phi = lerp(s.phi, 0.92, 1 - Math.exp(-dt * 0.6)); s.theta += dt * 0.055; }
+  camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(s));
+}
+app.followFireOn = () => fireCam.on;
+app.setFollowFire = (on) => { fireCam.on = on; fireCam.engaged = on && state.playing; try { localStorage.setItem('firetrace.follow', on ? '1' : '0'); } catch (e) { /* ignore */ } $('#followBtn')?.classList.toggle('on', on); };
+
 function updateCamera(dt) {
+  updateFireCam(dt);
   if (tweens.length) {
     const tw = tweens[0]; tw.t += dt; const k = Math.min(1, tw.t / tw.dur); tw.fn(k);
     if (k >= 1) { tweens.shift(); tw.done && tw.done(); tw.after && tw.after(); }
@@ -893,7 +947,7 @@ canvas.addEventListener('wheel', (e) => {
   if (state.camMode === 'chase') { chase.dist = clamp(chase.dist * (1 + Math.sign(e.deltaY) * 0.12), 10, 3000); e.preventDefault(); }
   if (state.camMode === 'follow') { /* orbit controls handles zoom around the followed unit */ }
 }, { passive: false });
-controls.addEventListener('start', () => { finishTweens(); });
+controls.addEventListener('start', () => { finishTweens(); fireCam.engaged = false; });
 
 // ------------------------------------------------------------------ picking / hover
 const ray = new THREE.Raycaster();
@@ -1285,6 +1339,7 @@ app.togglePipFull = togglePipFull;
 export function togglePlay(force) {
   state.playing = force ?? !state.playing;
   if (state.playing && state.time >= C.T_END - 0.01) setTime(C.T_START);
+  fireCam.engaged = state.playing && fireCam.on;
   $('#tlPlay').classList.toggle('on', state.playing); $('#tlPause').classList.toggle('on', !state.playing);
 }
 app.togglePlay = togglePlay;
