@@ -16,7 +16,7 @@ import * as UI from './ui.js';
 import { loadReal, realUnits, headFilterFactory } from './real.js';
 import { initI18n } from './i18n.js';
 
-const INCIDENT = new URLSearchParams(location.search).get('incident') || 'pedrogao';
+const INCIDENT = 'pedrogao';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -155,25 +155,18 @@ function realEvents(rc) {
 async function init() {
   hydrateIcons();
   initI18n(() => { if (!$('#modal').classList.contains('hidden') && $('.intro')) UI.showIntro(true); if (app.events) { app.scheduleCharts(); UI.renderFeed(app); } });
-  if (INCIDENT !== 'ridgeview') {
-    const rc = await loadReal(INCIDENT, ld);
-    app.real = rc; rc.headFilter = headFilterFactory(rc);
-    applyRealState(rc);
-    ld('Building terrain', 0.08); await tick();
-    terrain = new C.Terrain(rc.dem);
-    fire = new C.FireResult(rc.arr, terrain);
-    // path node times from the official isochrones (earliest arrival within ~500 m)
-    rc.paths.forEach((pth) => pth.forEach((q, i) => {
-      if (i === 0) return; let best = 999;
-      for (let dz = -500; dz <= 500; dz += 125) for (let dx = -500; dx <= 500; dx += 125) best = Math.min(best, fire.arrivalAt(q.x + dx, q.z + dz));
-      q.t = best;
-    }));
-  } else {
-    ld('Generating terrain', 0.04); await tick();
-    terrain = new C.Terrain();
-    ld('Simulating fire spread', 0.08); await tick();
-    fire = C.simulateFire(terrain);
-  }
+  const rc = await loadReal(INCIDENT, ld);
+  app.real = rc; rc.headFilter = headFilterFactory(rc);
+  applyRealState(rc);
+  ld('Building terrain', 0.08); await tick();
+  terrain = new C.Terrain(rc.dem);
+  fire = new C.FireResult(rc.arr, terrain);
+  // path node times from the official isochrones (earliest arrival within ~500 m)
+  rc.paths.forEach((pth) => pth.forEach((q, i) => {
+    if (i === 0) return; let best = 999;
+    for (let dz = -500; dz <= 500; dz += 125) for (let dx = -500; dx <= 500; dx += 125) best = Math.min(best, fire.arrivalAt(q.x + dx, q.z + dz));
+    q.t = best;
+  }));
   world = new World(terrain, fire, renderer);
   app.world = world; app.terrain = terrain;
   await world.build(ld);

@@ -858,8 +858,7 @@ function openTopMenu(name, anchor) {
   const menus = {
     incidentMenu: [
       { header: 'Incidents' },
-      { label: 'Pedrógão Grande 2017 · real data', check: !!R(), action: () => { if (!R()) location.href = location.pathname; } },
-      { label: 'Ridgeview Incident · synthetic demo', check: !R(), action: () => { if (R()) location.href = `${location.pathname}?incident=ridgeview`; } },
+      { label: 'Pedrógão Grande 2017 · real data', check: true },
       { sep: true },
       { label: 'Incident overview…', icon: 'file', action: () => { if (S.mode !== 'incident') L.setMode('incident'); toast('Overview is in the side panel'); } },
     ],
@@ -922,8 +921,8 @@ function exportSnapshot() {
 function exportReport() {
   const f = app.fire;
   const w = window.open('', '_blank'); if (!w) { toast('Allow pop-ups to open the report'); return; }
-  w.document.write(`<!doctype html><title>Ridgeview Incident — FireTrace report</title><style>body{font:14px/1.5 Inter,system-ui,sans-serif;max-width:760px;margin:40px auto;color:#2a2520}h1{font-size:22px}td{padding:4px 12px 4px 0}th{text-align:left;color:#777;font-weight:500;padding-right:12px}</style>
-    <h1>Ridgeview Incident · CA-LAC-2024-0176</h1><p>San Gabriel Mountains, CA · Aug 14 – Aug 18, 2024 · generated ${new Date().toLocaleString()}</p>
+  w.document.write(`<!doctype html><title>Pedrógão Grande 2017 — FireTrace report</title><style>body{font:14px/1.5 Inter,system-ui,sans-serif;max-width:760px;margin:40px auto;color:#2a2520}h1{font-size:22px}td{padding:4px 12px 4px 0}th{text-align:left;color:#777;font-weight:500;padding-right:12px}</style>
+    <h1>Pedrógão Grande + Góis · 17–22 Jun 2017</h1><p>Leiria / Coimbra, Portugal · illustrative reconstruction · generated ${new Date().toLocaleString()}</p>
     <table>${overviewData().map(([k, v]) => `<tr><th>${k}</th><td>${v.replace(/<[^>]+>/g, '')}</td></tr>`).join('')}</table>
     <h2>Key events</h2><table>${app.events.concat(S.customEvents).map((e) => `<tr><td>${fmtTime(e.t)}</td><td>${esc(e.name)}</td></tr>`).join('')}</table>
     <h2>Fire behaviour</h2><p>Final modeled area ${fmtInt(f.finalAcres)} acres. Peak rate of spread ${Math.round(Math.max(...f.ros))} chains/hr.</p>
