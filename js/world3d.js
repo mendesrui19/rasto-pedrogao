@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { makeNoise, mulberry32, clamp, lerp, smoothstep } from './util.js';
 import * as CORE from './core.js';
+import { loadBitmap } from './real.js';
 import { SIZE, HALF, GN, CELL, BASE, WATER, FN, FCELL, UNBURNED, ROADS, PLACES, rawElev, distToPolyline } from './core.js';
 
 export const U = {
@@ -80,8 +81,8 @@ void main(){
   float water = 0.0;
 #else
   vec4 ct = texture2D(uColorTex, uv);
-  float shade = ct.a;
   vec4 info = texture2D(uInfoTex, uv);
+  float shade = mix(ct.a, info.a, uReal);
   float water = info.g;
   vec3 relief = vec3(0.86, 0.82, 0.75) * (0.42 + 0.7 * shade);
   vec3 col = mix(relief, ct.rgb, uImagery);
@@ -376,6 +377,7 @@ export class World {
       const len = Math.hypot(dx, 1, dz);
       this.gnx[j * GN + i] = -dx / len; this.gny[j * GN + i] = 1 / len; this.gnz[j * GN + i] = -dz / len;
     }
+    if (this.real) return; // hillshade + shadows are baked offline into info.webp / tex_*.webp
     // shadow mask (sun from WNW) by marching the height grid
     const sun = U.uSunDir.value;
     const sx = sun.x, sz = sun.z, sy = sun.y / Math.hypot(sun.x, sun.z);
@@ -479,76 +481,29 @@ export class World {
   }
 
   async _bakeReal(progress) {
-    const R = 2048, IR = 1024;
     const REAL = CORE.REAL;
-    const loadPx = async (url) => {
-      const img = new Image(); img.src = url; await img.decode();
-      const cv = document.createElement('canvas'); cv.width = cv.height = R;
-      const g = cv.getContext('2d'); g.drawImage(img, 0, 0, R, R); return g.getImageData(0, 0, R, R).data;
+    const mk = (img, mips) => {
+      const tex = new THREE.Texture(img);
+      tex.colorSpace = THREE.NoColorSpace; tex.flipY = false; tex.magFilter = THREE.LinearFilter;
+      tex.minFilter = mips ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter; tex.generateMipmaps = mips;
+      if (mips) tex.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+      tex.needsUpdate = true; return tex;
     };
     progress('Loading Sentinel-2 imagery', 0.2);
-    const pre = await loadPx(REAL.imagery.pre);
-    const sun = U.uSunDir.value;
-    const mk = (src) => {
-      const data = new Uint8Array(R * R * 4);
-      for (let py = 0; py < R; py++) {
-        const z = -HALF + (py + 0.5) / R * SIZE;
-        for (let px = 0; px < R; px++) {
-          const x = -HALF + (px + 0.5) / R * SIZE;
-          const nx = this._bil(this.gnx, x, z), ny = this._bil(this.gny, x, z), nz = this._bil(this.gnz, x, z);
-          const sh = this._bil(this.shadow, x, z);
-          const lam = Math.max(0, nx * sun.x + ny * sun.y + nz * sun.z);
-          const shade = clamp(0.18 + 0.95 * lam * (0.35 + 0.65 * sh), 0, 1);
-          const o = (py * R + px) * 4;
-          // Sentinel-2 TCI is dark; lift and add relief shading
-          const k = 1.55 * (0.62 + 0.55 * shade);
-          data[o] = clamp(Math.pow(src[o] / 255, 0.85) * 255 * k, 0, 255);
-          data[o + 1] = clamp(Math.pow(src[o + 1] / 255, 0.85) * 255 * k, 0, 255);
-          data[o + 2] = clamp(Math.pow(src[o + 2] / 255, 0.85) * 255 * k * 0.95, 0, 255);
-          data[o + 3] = shade * 255;
-        }
-      }
-      const tex = new THREE.DataTexture(data, R, R, THREE.RGBAFormat);
-      tex.colorSpace = THREE.NoColorSpace; tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.generateMipmaps = true;
-      tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy(); tex.flipY = false; tex.needsUpdate = true;
-      return tex;
-    };
-    progress('Draping imagery over terrain', 0.3); await sleep();
-    this.preTex = mk(pre);
+    this.preTex = mk(await REAL.preImg, true);
     U.uColorTex.value = this.preTex;
     this._postUrl = REAL.imagery.post;
-    // info texture: r = forest density (NDVI), g = water (OSM), b = burn severity (dNBR)
-    const wc = document.createElement('canvas'); wc.width = wc.height = IR; const wg = wc.getContext('2d');
-    wg.fillStyle = '#000'; wg.fillRect(0, 0, IR, IR); wg.fillStyle = '#fff';
-    const toPx = (v) => (v + HALF) / SIZE * IR;
-    REAL.osm.waters.forEach((w) => { wg.beginPath(); w.p.forEach(([x, z], i) => (i ? wg.lineTo(toPx(x), toPx(z)) : wg.moveTo(toPx(x), toPx(z)))); wg.closePath(); wg.fill(); });
-    wg.strokeStyle = '#fff'; wg.lineWidth = 1.2;
-    REAL.osm.rivers.forEach((w) => { wg.beginPath(); w.p.forEach(([x, z], i) => (i ? wg.lineTo(toPx(x), toPx(z)) : wg.moveTo(toPx(x), toPx(z)))); wg.stroke(); });
-    const wd = wg.getImageData(0, 0, IR, IR).data;
-    const info = new Uint8Array(IR * IR * 4);
-    for (let i = 0; i < IR * IR; i++) {
-      info[i * 4] = REAL.veg[i] * 255; info[i * 4 + 1] = wd[i * 4]; info[i * 4 + 2] = clamp(REAL.dnbr[i] / 255 * 1.1 * 255 - 0.1 * 255 + 25, 0, 255); info[i * 4 + 3] = 255;
-    }
-    // dnbr png stores (dnbr + 0.1)/1.1 → decode to dnbr in 0..1 for the shader
-    for (let i = 0; i < IR * IR; i++) { const dn = REAL.dnbr[i] / 255 * 1.1 - 0.1; info[i * 4 + 2] = clamp(dn, 0, 1) * 255; }
-    const itex = new THREE.DataTexture(info, IR, IR, THREE.RGBAFormat);
-    itex.magFilter = THREE.LinearFilter; itex.minFilter = THREE.LinearFilter; itex.needsUpdate = true;
+    // info texture: r = forest density (NDVI), g = water (OSM), b = burn severity (dNBR), a = hillshade
+    const itex = mk(REAL.infoImg, false);
+    itex.premultiplyAlpha = false;
     U.uInfoTex.value = itex;
   }
   async setImagery(which) {
     if (!this.real) return;
     if (which === 'post' && !this.postTex) {
-      const img = new Image(); img.src = this._postUrl; await img.decode();
-      const cv = document.createElement('canvas'); cv.width = cv.height = 2048; const g = cv.getContext('2d'); g.drawImage(img, 0, 0, 2048, 2048);
-      const src = g.getImageData(0, 0, 2048, 2048).data; const data = new Uint8Array(src.length);
-      const pre = this.preTex.image.data;
-      for (let i = 0; i < src.length; i += 4) {
-        const shade = pre[i + 3] / 255; const k = 1.55 * (0.62 + 0.55 * shade);
-        data[i] = clamp(Math.pow(src[i] / 255, 0.85) * 255 * k, 0, 255); data[i + 1] = clamp(Math.pow(src[i + 1] / 255, 0.85) * 255 * k, 0, 255);
-        data[i + 2] = clamp(Math.pow(src[i + 2] / 255, 0.85) * 255 * k * 0.95, 0, 255); data[i + 3] = pre[i + 3];
-      }
-      const tex = new THREE.DataTexture(data, 2048, 2048, THREE.RGBAFormat);
-      tex.colorSpace = THREE.NoColorSpace; tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.generateMipmaps = true; tex.flipY = false; tex.needsUpdate = true;
+      const tex = new THREE.Texture(await loadBitmap(this._postUrl));
+      tex.colorSpace = THREE.NoColorSpace; tex.flipY = false; tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.anisotropy = this.preTex.anisotropy; tex.needsUpdate = true;
       this.postTex = tex;
     }
     U.uColorTex.value = which === 'post' ? this.postTex : this.preTex;
@@ -647,27 +602,38 @@ export class World {
     this.group.add(this.water);
   }
 
+  // trees are split into a grid of instanced chunks: frustum-culled by three.js, thinned with distance in cullTrees()
   buildTrees(trees) {
+    const NCH = 8, CS = SIZE / NCH;
+    const mat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: treeVS, fragmentShader: treeFS });
     const mk = (geo, list, color) => {
       geo = geo.index ? geo.toNonIndexed() : geo; geo.computeVertexNormals();
-      const mat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: treeVS, fragmentShader: treeFS });
-      const mesh = new THREE.InstancedMesh(geo, mat, list.length);
-      const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
-      const arr = new Float32Array(list.length);
+      const group = new THREE.Group();
+      const cells = Array.from({ length: NCH * NCH }, () => []);
+      list.forEach((tr) => cells[clamp(Math.floor((tr.z + HALF) / CS), 0, NCH - 1) * NCH + clamp(Math.floor((tr.x + HALF) / CS), 0, NCH - 1)].push(tr));
+      const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
       const c = new THREE.Color();
-      list.forEach((tr, i) => {
-        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), tr.rot);
-        s.set(tr.s * (tr.conifer ? 0.62 : 1), tr.s / this.vex, tr.s * (tr.conifer ? 0.62 : 1));
-        p.set(tr.x, tr.y - BASE - 1.5, tr.z);
-        m.compose(p, q, s); mesh.setMatrixAt(i, m);
-        arr[i] = tr.arr;
-        c.setRGB(color[0] * (0.8 + tr.tint * 0.4), color[1] * (0.8 + tr.tint * 0.35), color[2] * (0.85 + tr.tint * 0.3));
-        mesh.setColorAt(i, c);
+      cells.forEach((cl, ci) => {
+        if (!cl.length) return;
+        const g = geo.clone();
+        const mesh = new THREE.InstancedMesh(g, mat, cl.length);
+        const arr = new Float32Array(cl.length);
+        cl.forEach((tr, i) => {
+          q.setFromAxisAngle(up, tr.rot);
+          s.set(tr.s * (tr.conifer ? 0.62 : 1), tr.s / this.vex, tr.s * (tr.conifer ? 0.62 : 1));
+          p.set(tr.x, tr.y - BASE - 1.5, tr.z);
+          m.compose(p, q, s); mesh.setMatrixAt(i, m);
+          arr[i] = tr.arr;
+          c.setRGB(color[0] * (0.8 + tr.tint * 0.4), color[1] * (0.8 + tr.tint * 0.35), color[2] * (0.85 + tr.tint * 0.3));
+          mesh.setColorAt(i, c);
+        });
+        g.setAttribute('aArr', new THREE.InstancedBufferAttribute(arr, 1));
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.computeBoundingSphere();
+        mesh.userData = { list: cl, n: cl.length, cx: -HALF + (ci % NCH + 0.5) * CS, cz: -HALF + (Math.floor(ci / NCH) + 0.5) * CS, r: CS * 0.71 };
+        group.add(mesh);
       });
-      geo.setAttribute('aArr', new THREE.InstancedBufferAttribute(arr, 1));
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.frustumCulled = false;
-      return mesh;
+      return group;
     };
     // conifer: stacked cones
     const cone1 = new THREE.ConeGeometry(0.5, 0.75, 7); cone1.translate(0, 0.55, 0);
@@ -680,6 +646,22 @@ export class World {
     this.treesA = mk(conGeo, trees.filter((t) => t.conifer), [0.22, 0.33, 0.17]);
     this.treesB = mk(leafGeo, trees.filter((t) => !t.conifer), [0.40, 0.46, 0.24]);
     this.group.add(this.treesA, this.treesB);
+    this.treeChunks = [...this.treesA.children, ...this.treesB.children];
+  }
+  // distance LOD: full density near the camera, thinned out with distance (instances are in random order)
+  cullTrees(cam) {
+    if (!this.treeChunks || !this.treesA.visible) return;
+    const cp = cam.position;
+    const h = Math.max(0, cp.y - this.groundY(cp.x, cp.z));
+    const near = 4500 + h * 0.25, far = 20000 + h * 0.3;
+    for (const mesh of this.treeChunks) {
+      const u = mesh.userData;
+      const d = Math.max(0, Math.hypot(cp.x - u.cx, cp.z - u.cz) - u.r);
+      const dd = Math.hypot(d, h * 0.6);
+      const f = dd <= near ? 1 : dd >= far ? 0 : Math.pow(1 - (dd - near) / (far - near), 1.6);
+      const n = Math.round(u.n * Math.max(f, 0.04));
+      mesh.count = n; mesh.visible = f > 0;
+    }
   }
 
   _buildRoads() {
@@ -789,10 +771,9 @@ export class World {
     U.uArrTex.value = tex;
     // update tree arrival attributes if trees exist
     if (this.treeList) {
-      [this.treesA, this.treesB].forEach((mesh, k) => {
-        const list = this.treeList.filter((t) => (k === 0 ? t.conifer : !t.conifer));
+      this.treeChunks.forEach((mesh) => {
         const attr = mesh.geometry.getAttribute('aArr');
-        list.forEach((tr, i) => { tr.arr = fire.arrivalAt(tr.x, tr.z); attr.array[i] = tr.arr; });
+        mesh.userData.list.forEach((tr, i) => { tr.arr = fire.arrivalAt(tr.x, tr.z); attr.array[i] = tr.arr; });
         attr.needsUpdate = true;
       });
     }

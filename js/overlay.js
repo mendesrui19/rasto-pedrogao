@@ -84,6 +84,18 @@ export class Overlay {
     const c = this.ctx; c.beginPath();
     pts.forEach((p, i) => (i ? c.lineTo(this.px(p[0]), this.px(p[1])) : c.moveTo(this.px(p[0]), this.px(p[1]))));
   }
+  // pre-rendered radial blobs (one per age colour), stamped with drawImage instead of a gradient per hotspot
+  _blob(k) {
+    this._blobs = this._blobs || [];
+    if (!this._blobs[k]) {
+      const col = [[255, 236, 120], [255, 150, 40], [220, 60, 30]][k], n = 64;
+      const cv = document.createElement('canvas'); cv.width = cv.height = n; const g = cv.getContext('2d');
+      const gr = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+      gr.addColorStop(0, `rgba(${col},1)`); gr.addColorStop(0.55, `rgba(${col},0.45)`); gr.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = gr; g.fillRect(0, 0, n, n); this._blobs[k] = cv;
+    }
+    return this._blobs[k];
+  }
   draw(s) {
     // s: { time, map, layers, perimeter, drops, lines, structures }
     const key = JSON.stringify([Math.round(s.time * 4), s.map > 0.5, s.layers, s.lineVersion, s.dropsVersion]);
@@ -168,13 +180,8 @@ export class Overlay {
         const age = s.time - h.t; if (age > 18) continue;
         const r = this.m((h.sat === 'VIIRS' ? 260 : 650) * (1 + Math.min(h.frp, 200) / 400));
         const a = Math.pow(1 - age / 18, 1.5) * L.hotspots.op * (map ? 0.75 : 0.6);
-        const col = age < 2 ? [255, 236, 120] : age < 8 ? [255, 150, 40] : [220, 60, 30];
-        const x = this.px(h.x), y = this.px(h.z);
-        const g = c.createRadialGradient(x, y, 0, x, y, r);
-        g.addColorStop(0, `rgba(${col[0]},${col[1]},${col[2]},${a.toFixed(3)})`);
-        g.addColorStop(0.55, `rgba(${col[0]},${col[1]},${col[2]},${(a * 0.45).toFixed(3)})`);
-        g.addColorStop(1, `rgba(${col[0]},${col[1]},${col[2]},0)`);
-        c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+        const spr = this._blob(age < 2 ? 0 : age < 8 ? 1 : 2);
+        c.globalAlpha = a; c.drawImage(spr, this.px(h.x) - r, this.px(h.z) - r, r * 2, r * 2);
       }
       c.restore();
     }

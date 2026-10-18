@@ -3,3 +3,4 @@ tools
 *.md
 .DS_Store
 package.json
+data/pedrogao/src

@@ -28,3 +28,10 @@ Python deps: numpy, pandas, rasterio, pyproj, shapely, scipy, pillow, requests.
    - Sources: Fig. 77a (operatives 14:30–19:00) and Fig. 92a/b (operatives and vehicles by type, 17–24 Jun).
    - Images extracted from the PDF with pypdf.
 8. ICNF official perimeters: WFS `http://si.icnf.pt/geoserverplinia/BDG/ardida_2017/ows` (`typeName=BDG:ardida_2017`), filtered to the June fires → `icnf_perimeters.json`.
+
+## Web bake (run last)
+The rasters above (`dem.f32`, `arrival.f32`, `fuel.u8`, `cos.u8`, `ndvi.png`, `dnbr.png`, `imagery_*.jpg`) live in `data/pedrogao/src/` and are not deployed.
+9. `python bake_web.py data/pedrogao`: writes the files the browser loads.
+   - `tex_pre/post.webp`: imagery pre-lit with hillshade and cast shadows.
+   - `info.webp`: forest density, water, dNBR and hillshade packed into RGBA.
+   - `dem.z`, `arrival.z`, `fuel.z`, `cos.z`: compact zlib grids, decoded in `js/real.js`.

@@ -34,6 +34,7 @@ export const state = {
   haze: true,
   showFps: false,
   quality: 'high',
+  res: 'auto',
   metric: true,
   layers: {
     terrain: { on: true, op: 1, name: 'Terrain (3D)' },
@@ -178,7 +179,7 @@ async function init() {
   await world.build(ld);
   ld('Planting trees', 0.68); await tick();
   const nTrees = app.real ? (state.quality === 'low' ? 40000 : 90000) : (state.quality === 'low' ? 26000 : 52000);
-  const trees = C.buildTrees(terrain, fire, nTrees, 5, (x, z) => world._bil(world.veg, x, z));
+  const trees = C.buildTrees(terrain, fire, nTrees, 5, world.veg ? (x, z) => world._bil(world.veg, x, z) : null);
   world.buildTrees(trees); world.treeList = trees;
   scene.add(world.group);
   ld('Tracing perimeters', 0.76); await tick();
@@ -598,7 +599,8 @@ function updateLabels() {
     if (!L.visible) { L.el.classList.remove('hide'); L.visible = true; }
     const x = (p.x * 0.5 + 0.5) * w, y = (-p.y * 0.5 + 0.5) * h;
     if (pr && x > pr.l - 30 && x < pr.r + 10 && y > pr.t - 10 && y < pr.b + 20) { L.el.classList.add('hide'); L.visible = false; continue; }
-    L.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) ${L.anchor || ''}`;
+    const tf = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) ${L.anchor || ''}`;
+    if (tf !== L.tf) { L.el.style.transform = tf; L.tf = tf; } // skip style writes for labels that did not move
     if (L.update) L.update(L);
   }
 }
@@ -1054,6 +1056,7 @@ function renderScene(cam, thermal) {
   U.uThermal.value = thermal ? 1 : 0;
   const prevFog = U.uFogDensity.value;
   if (thermal) U.uFogDensity.value = prevFog * 0.4;
+  world.cullTrees(cam);
   renderer.render(scene, cam);
   U.uFogDensity.value = prevFog;
   U.uThermal.value = 0;
@@ -1342,8 +1345,28 @@ function applyHash() {
 
 // ------------------------------------------------------------------ main loop
 let last = performance.now(), clk = 0, acc = { charts: 0, hist: 0, ui: 0, hash: 0, det: 0 }, fpsAcc = 0, fpsN = 0;
+// adaptive resolution: lower the pixel ratio while frames run long, step back up when there is headroom
+const ada = { ema: 0, best: 1e9, slow: 0, fast: 0, cap: 2, lastDrop: -1e9, lastRaise: -1e9 };
+function adaptRes(ms, now) {
+  if (state.res !== 'auto' || ms > 250) return;
+  const max = Math.min(window.devicePixelRatio || 1, 2, ada.cap), floor = Math.min(1, max) * (max <= 1 ? 0.75 : 1);
+  ada.ema = ada.ema ? ada.ema * 0.92 + ms * 0.08 : ms;
+  ada.best = Math.min(ada.best + 0.002, ms);         // ≈ display refresh interval
+  const cur = renderer.getPixelRatio();
+  if (ada.ema > ada.best * 1.3 + 1) { ada.slow += ms; ada.fast = 0; } else { ada.slow = Math.max(0, ada.slow - ms * 0.5); if (ada.ema < ada.best * 1.08 + 0.4) ada.fast += ms; }
+  if (ada.slow > 900 && cur > floor) {
+    if (now - ada.lastRaise < 5000) ada.cap = cur - 0.25; // the last raise did not hold: stop trying above this level
+    setDpr(Math.max(floor, cur - 0.25)); ada.lastDrop = now; ada.slow = 0; ada.fast = 0; ada.ema = 0;
+  } else if (ada.fast > 4000 && cur < max && now - ada.lastDrop > 8000) {
+    setDpr(Math.min(max, cur + 0.25)); ada.lastRaise = now; ada.fast = 0; ada.ema = 0;
+  }
+}
+function setDpr(v) { if (Math.abs(renderer.getPixelRatio() - v) < 0.01) return; renderer.setPixelRatio(v); resize(); }
+app.setRes = (v) => { state.res = v; ada.cap = 2; ada.ema = 0; setDpr(Math.min(v === 'auto' ? 2 : +v, window.devicePixelRatio || 1)); };
+
 function frame(now) {
   requestAnimationFrame(frame);
+  adaptRes(now - last, now);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   clk += dt; unitCtx.clk = clk; U.uClock.value = clk; feed.rec += dt;
   if (state.playing) {
@@ -1395,7 +1418,7 @@ function frame(now) {
   renderer.setViewport(0, 0, viewport.clientWidth, viewport.clientHeight);
   renderer.clear();
   const pipVisible = state.mode === 'drones' && state.pip.open;
-  if (!(pipVisible && state.pip.full)) renderer.render(scene, camera);
+  if (!(pipVisible && state.pip.full)) { world.cullTrees(camera); renderer.render(scene, camera); }
   if (pipVisible) { renderPip(clk); drawHud(clk); }
   // periodic UI
   acc.ui += dt; acc.hist += dt; acc.charts += dt; acc.hash += dt; acc.det += dt;

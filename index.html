@@ -9,14 +9,46 @@
 <meta property="og:description" content="Reconstrução ilustrativa do incêndio de Pedrógão Grande com dados oficiais e de satélite." />
 <meta property="og:type" content="website" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preconnect" href="https://unpkg.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="css/app.css" />
 <script type="importmap">
 { "imports": {
-  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.min.js",
   "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
 } }
 </script>
+<!-- fetch every module and the critical incident data in parallel instead of discovering them one import at a time -->
+<link rel="modulepreload" href="https://unpkg.com/three@0.160.0/build/three.module.min.js" crossorigin />
+<link rel="modulepreload" href="https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js" crossorigin />
+<link rel="modulepreload" href="https://unpkg.com/three@0.160.0/examples/jsm/lines/Line2.js" crossorigin />
+<link rel="modulepreload" href="https://unpkg.com/three@0.160.0/examples/jsm/lines/LineSegments2.js" crossorigin />
+<link rel="modulepreload" href="https://unpkg.com/three@0.160.0/examples/jsm/lines/LineGeometry.js" crossorigin />
+<link rel="modulepreload" href="https://unpkg.com/three@0.160.0/examples/jsm/lines/LineSegmentsGeometry.js" crossorigin />
+<link rel="modulepreload" href="https://unpkg.com/three@0.160.0/examples/jsm/lines/LineMaterial.js" crossorigin />
+<link rel="modulepreload" href="js/main.js" />
+<link rel="modulepreload" href="js/core.js" />
+<link rel="modulepreload" href="js/util.js" />
+<link rel="modulepreload" href="js/world3d.js" />
+<link rel="modulepreload" href="js/real.js" />
+<link rel="modulepreload" href="js/ui.js" />
+<link rel="modulepreload" href="js/overlay.js" />
+<link rel="modulepreload" href="js/units.js" />
+<link rel="modulepreload" href="js/charts.js" />
+<link rel="modulepreload" href="js/scenario.js" />
+<link rel="modulepreload" href="js/icons.js" />
+<link rel="modulepreload" href="js/i18n.js" />
+<link rel="preload" href="data/pedrogao/meta.json" as="fetch" crossorigin />
+<link rel="preload" href="data/pedrogao/osm.json" as="fetch" crossorigin />
+<link rel="preload" href="data/pedrogao/record.json" as="fetch" crossorigin />
+<link rel="preload" href="data/pedrogao/dem.z" as="fetch" crossorigin />
+<link rel="preload" href="data/pedrogao/arrival.z" as="fetch" crossorigin />
+<link rel="preload" href="data/pedrogao/info.webp" as="fetch" crossorigin />
+<link rel="preload" href="data/pedrogao/tex_pre.webp" as="fetch" crossorigin />
+<link rel="preload" href="data/pedrogao/fuel.z" as="fetch" crossorigin />
+<link rel="preload" href="data/pedrogao/cos.z" as="fetch" crossorigin />
+<link rel="preload" href="data/pedrogao/icnf_perimeters.json" as="fetch" crossorigin />
 </head>
 <body>
 <div id="app">

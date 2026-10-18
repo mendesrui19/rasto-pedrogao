@@ -356,7 +356,7 @@ export function showTooltip(a, cx, cy, x, z) {
   let extra = '';
   if (R()) {
     const n = R().dnbrN; const i = clamp(Math.floor((x + C.HALF) / C.SIZE * n), 0, n - 1), j = clamp(Math.floor((z + C.HALF) / C.SIZE * n), 0, n - 1);
-    const dn = R().dnbr[j * n + i] / 255 * 1.1 - 0.1;
+    const dn = R().dnbr[j * n + i] / 255;
     const cs = R().cos ? R().cos[clamp(Math.floor((z + C.HALF) / C.SIZE * C.FN), 0, C.FN - 1) * C.FN + clamp(Math.floor((x + C.HALF) / C.SIZE * C.FN), 0, C.FN - 1)] : null;
     extra = `${cs ? `<div class="tt-f">COS 2018: ${COS_NAMES[cs] || '—'}</div>` : ''}<div class="tt-f">dNBR ${dn.toFixed(2)} · ${SEV(dn)}</div>`;
   }
@@ -934,15 +934,15 @@ function exportReport() {
 function openSettings() {
   modal(`<h3>Settings</h3>
     <div class="row"><span>Elevation units</span><select id="stUnits"><option value="m" ${S.metric ? 'selected' : ''}>Metric (m)</option><option value="ft" ${!S.metric ? 'selected' : ''}>Imperial (ft)</option></select></div>
-    <div class="row"><span>Render resolution</span><select id="stRes"><option value="1">Standard (1×)</option><option value="1.5">High (1.5×)</option><option value="2" selected>Retina (2×)</option></select></div>
+    <div class="row"><span>Render resolution</span><select id="stRes"><option value="auto">Auto (adaptive)</option><option value="1">Standard (1×)</option><option value="1.5">High (1.5×)</option><option value="2" selected>Retina (2×)</option></select></div>
     <div class="row"><span>Show trees</span><input type="checkbox" id="stTrees" ${app.world.treesA.visible || S.dim === '2d' ? 'checked' : ''}/></div>
     <div class="row"><span>Show FPS counter</span><input type="checkbox" id="stFps" ${S.showFps ? 'checked' : ''}/></div>
     <div class="row"><span>Playback rate at 1×</span><span class="muted">0.75 h of incident time per second</span></div>
     <div class="foot"><button class="btn" data-close>Close</button><button class="btn red" id="stOk">Apply</button></div>`);
-  $('#stRes').value = String(Math.min(2, app.renderer.getPixelRatio()));
+  $('#stRes').value = S.res === 'auto' ? 'auto' : String(S.res);
   $('#stOk').onclick = () => {
     S.metric = $('#stUnits').value === 'm';
-    app.renderer.setPixelRatio(Math.min(+$('#stRes').value, window.devicePixelRatio || 1));
+    app.setRes($('#stRes').value);
     if (S.dim === '3d') { app.world.treesA.visible = app.world.treesB.visible = $('#stTrees').checked; }
     S.showFps = $('#stFps').checked; if (!S.showFps) setFps(null);
     window.dispatchEvent(new Event('resize'));

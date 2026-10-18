@@ -5,36 +5,60 @@ import { setCalendar, setGeo, clamp, lerp, mulberry32 } from './util.js';
 const KEY_VILLAGES = ['Pobrais', 'Nodeirinho', 'Vila Facaia', 'Escalos Fundeiros', 'Escalos Cimeiros', 'Fonte Limpa', 'Graça', 'Derreada Cimeira',
   'Mosteiro', 'Coelhal', 'Regadas', 'Alge', 'Sarzedas de São Pedro', 'Pera', 'Aguda', 'Moita', 'Casal de São Simão'];
 
-async function grayImage(url, n) {
-  const img = new Image(); img.src = url; await img.decode();
+// info.webp (baked offline by tools/pedrogao/bake_web.py): r forest density, g water, b dNBR 0..1, a hillshade
+async function infoImage(url, n) {
+  const img = await loadBitmap(url);
   const cv = document.createElement('canvas'); cv.width = cv.height = n;
-  const g = cv.getContext('2d'); g.drawImage(img, 0, 0, n, n);
-  const d = g.getImageData(0, 0, n, n).data; const out = new Uint8Array(n * n);
-  for (let i = 0; i < n * n; i++) out[i] = d[i * 4];
+  const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, n, n);
+  const d = g.getImageData(0, 0, n, n).data; const veg = new Float32Array(n * n), dnbr = new Uint8Array(n * n);
+  for (let i = 0; i < n * n; i++) { veg[i] = d[i * 4] / 255; dnbr[i] = d[i * 4 + 2]; }
+  return { img, veg, dnbr };
+}
+// dem.z: int16 residuals of the 2-D predictor v = r + left + up - upleft, stored as low/high byte planes
+function decodeDem(b, n) {
+  const N = n * n, v = new Int32Array(N), out = new Float32Array(N);
+  for (let j = 0, k = 0; j < n; j++) for (let i = 0; i < n; i++, k++) {
+    const r = ((b[N + k] << 24) >> 16) | b[k];
+    v[k] = r + (i ? v[k - 1] : 0) + (j ? v[k - n] : 0) - (i && j ? v[k - n - 1] : 0);
+    out[k] = v[k] / 10;
+  }
   return out;
 }
 export async function loadImage(url) { const img = new Image(); img.src = url; await img.decode(); return img; }
+// fetch with a couple of retries (flaky mobile links, dropped connections)
+async function get(url, tries = 3) {
+  for (let k = 1; ; k++) {
+    try { const r = await fetch(url); if (!r.ok) throw new Error(`${r.status} ${url}`); return r; } catch (e) { if (k >= tries) throw e; await new Promise((res) => setTimeout(res, 300 * k)); }
+  }
+}
+// decoded off the main thread, unpremultiplied — ready for a GPU upload
+export async function loadBitmap(url) {
+  const blob = await get(url).then((r) => r.blob());
+  return createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+}
 
 export async function loadReal(id, progress = () => {}) {
   const base = `data/${id}/`;
   progress('Loading incident data', 0.03);
-  const [meta, osm, record] = await Promise.all(['meta.json', 'osm.json', 'record.json'].map((f) => fetch(base + f).then((r) => r.json())));
-  const icnf = await fetch(base + 'icnf_perimeters.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  const bin = (f) => fetch(base + f).then((r) => r.arrayBuffer());
-  progress('Loading terrain & fire record', 0.06);
-  const [demB, arrB, fuelB, cosB] = await Promise.all([bin('dem.f32'), bin('arrival.f32'), bin('fuel.u8'), bin('cos.u8').catch(() => null)]);
+  // everything in parallel; the pre-fire texture download starts now and is awaited by the 3D world
+  const json = (f) => get(base + f).then((r) => r.json());
+  const inflate = (f) => get(base + f).then((r) => new Response(r.body.pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
   const VN = 1024;
-  const [ndviG, dnbrG] = await Promise.all([grayImage(base + 'ndvi.png', VN), grayImage(base + 'dnbr.png', VN)]);
+  const preImg = loadBitmap(base + 'tex_pre.webp');
+  const [meta, osm, record, icnf, demB, arrB, fuelB, cosB, info] = await Promise.all([
+    json('meta.json'), json('osm.json'), json('record.json'), json('icnf_perimeters.json').catch(() => null),
+    inflate('dem.z'), inflate('arrival.z'), inflate('fuel.z'), inflate('cos.z').catch(() => null), infoImage(base + 'info.webp', VN)]);
+  progress('Loading terrain & fire record', 0.1);
   setCalendar('Jun', 17);
   setGeo(meta.lat0, meta.lon0);
 
   const size = meta.half * 2;
-  const dem = new Float32Array(demB);
-  const arr = new Float32Array(arrB);
+  // dem in decimetres, arrival in minutes since 17 Jun 00:00 (65535 = unburned → 999 h)
+  const dem = decodeDem(new Uint8Array(demB), meta.gn);
+  const arr16 = new Uint16Array(arrB), arr = new Float32Array(arr16.length);
+  for (let i = 0; i < arr.length; i++) arr[i] = arr16[i] === 65535 ? 999 : arr16[i] / 60;
   const fuel = new Uint8Array(fuelB);
-  // forest density from pre-fire NDVI (png encodes (ndvi + 0.1) * 255)
-  const veg = new Float32Array(VN * VN);
-  for (let i = 0; i < VN * VN; i++) { const nd = ndviG[i] / 255 - 0.1; veg[i] = clamp((nd - 0.32) / 0.42, 0, 1); }
+  const veg = info.veg; // forest density from pre-fire NDVI
 
   // ---- places ----
   const P = {};
@@ -113,8 +137,8 @@ export async function loadReal(id, progress = () => {}) {
     tIgnition: Math.min(pg.t, go.t), extraIgnitions: extra, tContain: Math.max(...meta.ignitions.map((g) => g.ext)),
     tStart: 12, tEnd: 6 * 24, tAxis0: 12,
     places: P, roads, trails: minor, admin: [],
-    fuel, veg, vegN: VN, cos: cosB ? new Uint8Array(cosB) : null, dnbr: dnbrG, dnbrN: VN, ndvi: ndviG,
-    weatherAt, res, paths, imagery: { pre: base + 'imagery_pre.jpg', post: base + 'imagery_post.jpg' },
+    fuel, veg, vegN: VN, cos: cosB ? new Uint8Array(cosB) : null, dnbr: info.dnbr, dnbrN: VN, infoImg: info.img, preImg,
+    weatherAt, res, paths, imagery: { pre: base + 'tex_pre.webp', post: base + 'tex_post.webp' },
     hotspots: meta.hotspots, dem, arr, icnf,
     areaUnit: 'ha', liquid: 'L',
   };
