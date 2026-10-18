@@ -37,17 +37,19 @@ export async function loadBitmap(url) {
   return createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
 }
 
+const DATA_V = 2;
 export async function loadReal(id, progress = () => {}) {
   const base = `data/${id}/`;
+  const u = (f) => `${base}${f}?v=${DATA_V}`; // bump DATA_V whenever the baked files change (they are cached for a day)
   progress('Loading incident data', 0.03);
   // everything in parallel; the pre-fire texture download starts now and is awaited by the 3D world
-  const json = (f) => get(base + f).then((r) => r.json());
-  const inflate = (f) => get(base + f).then((r) => new Response(r.body.pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
+  const json = (f) => get(u(f)).then((r) => r.json());
+  const inflate = (f) => get(u(f)).then((r) => new Response(r.body.pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
   const VN = 1024;
-  const preImg = loadBitmap(base + 'tex_pre.webp');
+  const preImg = loadBitmap(u('tex_pre.webp'));
   const [meta, osm, record, icnf, demB, arrB, fuelB, cosB, info, outerB] = await Promise.all([
     json('meta.json'), json('osm.json'), json('record.json'), json('icnf_perimeters.json').catch(() => null),
-    inflate('dem.z'), inflate('arrival.z'), inflate('fuel.z'), inflate('cos.z').catch(() => null), infoImage(base + 'info.webp', VN), inflate('outer.z').catch(() => null)]);
+    inflate('dem.z'), inflate('arrival.z'), inflate('fuel.z'), inflate('cos.z').catch(() => null), infoImage(u('info.webp'), VN), inflate('outer.z').catch(() => null)]);
   progress('Loading terrain & fire record', 0.1);
   setCalendar('Jun', 17);
   setGeo(meta.lat0, meta.lon0);
@@ -138,7 +140,7 @@ export async function loadReal(id, progress = () => {}) {
     tStart: 12, tEnd: 6 * 24, tAxis0: 12,
     places: P, roads, trails: minor, admin: [],
     fuel, veg, vegN: VN, cos: cosB ? new Uint8Array(cosB) : null, dnbr: info.dnbr, dnbrN: VN, infoImg: info.img, preImg,
-    weatherAt, res, paths, imagery: { pre: base + 'tex_pre.webp', post: base + 'tex_post.webp' },
+    weatherAt, res, paths, imagery: { pre: u('tex_pre.webp'), post: u('tex_post.webp') },
     hotspots: meta.hotspots, dem, arr, icnf,
     outer: outerB ? { h: new Uint16Array(outerB), n: 241, size: 150000 } : null,
     areaUnit: 'ha', liquid: 'L',

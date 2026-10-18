@@ -35,3 +35,5 @@ The rasters above (`dem.f32`, `arrival.f32`, `fuel.u8`, `cos.u8`, `ndvi.png`, `d
    - `tex_pre/post.webp`: imagery pre-lit with hillshade and cast shadows.
    - `info.webp`: forest density, water, dNBR and hillshade packed into RGBA.
    - `dem.z`, `arrival.z`, `fuel.z`, `cos.z`: compact zlib grids, decoded in `js/real.js`.
+   - Pass the Copernicus mosaic as a second argument (`bake_web.py data/pedrogao raw/dem_mosaic.tif`) for the 24 m hillshade and `outer.z` (real relief out to 75 km).
+   - After re-baking, bump `DATA_V` in `js/real.js` and the `?v=` on the preloads in `index.html`: `/data` is cached for a day.
