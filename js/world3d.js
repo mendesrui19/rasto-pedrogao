@@ -27,6 +27,8 @@ export const U = {
   uTreesBurn: { value: 1 },
   uFireOn: { value: 1 },
   uReal: { value: 0 },
+  uArrManual: { value: 0 },
+  uArrN: { value: 400 },
   uIgnPos2: { value: new THREE.Vector2(1e7, 1e7) },
   uGridStep: { value: new THREE.Vector2(1533.333, 1849.167) },
   uGridOff: { value: new THREE.Vector2(0, 0) },
@@ -69,7 +71,15 @@ varying vec3 vW; varying vec3 vView; varying vec3 vN;
 #ifdef OUTER
 varying vec3 vCol;
 #endif
+uniform float uArrManual, uArrN;
 ${GLSL_NOISE}
+// arrival texture lookup: hardware bilinear when float filtering exists, manual bilinear otherwise (no blocky cells)
+vec4 arrSample(vec2 uv) {
+  if (uArrManual < 0.5) return texture2D(uArrTex, uv);
+  vec2 p = uv * uArrN - 0.5; vec2 f = fract(p); vec2 b = (floor(p) + 0.5) / uArrN; float d = 1.0 / uArrN;
+  vec4 a = texture2D(uArrTex, b), c = texture2D(uArrTex, b + vec2(d, 0.0)), e = texture2D(uArrTex, b + vec2(0.0, d)), g = texture2D(uArrTex, b + vec2(d, d));
+  return mix(mix(a, c, f.x), mix(e, g, f.x), f.y);
+}
 void main(){
   vec2 xz = vW.xz;
   vec2 uv = (xz + uHalf) / (2.0 * uHalf);
@@ -111,31 +121,40 @@ void main(){
   // ---------------- fire -----------------
   // domain-warped lookup: breaks the straight 125 m cell edges of the arrival grid into organic perimeters
   vec2 warp = (vec2(vnoise(xz / 320.0), vnoise(xz / 320.0 + 5.3)) - 0.5) * 150.0;
-  vec4 at = texture2D(uArrTex, (xz + warp + uHalf) / (2.0 * uHalf));
+  vec4 at = arrSample((xz + warp + uHalf) / (2.0 * uHalf));
   float dt = 1e3;
   float isoW = fwidth(at.r) * 0.9 + 0.02;
   // the whole fire block only runs where the cell burns by now (most of the map never does)
   if (at.b > 0.15 && at.r - 1.0 < uTime) {
-    float young = clamp((uTime - at.r) / 4.0, 0.25, 1.0);
-    float arr = at.r + ((fbm3(xz / 160.0) - 0.5) * 1.4 + (vnoise(xz / 28.0) - 0.5) * 0.4) * young;
+    // ragged front as a *spatial* jitter (±45 m + ±12 m) converted to time with the local arrival gradient:
+    // same raggedness where the fire crawls or runs, and time-independent so burned ground never flickers back
+    // (only near the front: long-burned ground does not need it, which keeps the shader cheap)
+    float arr = at.r;
+    if (uTime - at.r < 3.0) {
+      vec2 tu = (xz + warp + uHalf) / (2.0 * uHalf); float tx = 1.0 / uArrN;
+      float gx = arrSample(tu + vec2(tx, 0.0)).r - arrSample(tu - vec2(tx, 0.0)).r;
+      float gz = arrSample(tu + vec2(0.0, tx)).r - arrSample(tu - vec2(0.0, tx)).r;
+      float gT = min(length(vec2(gx, gz)) / (2.0 * (2.0 * uHalf) * tx), 0.01);   // hours per metre, capped at plateau edges
+      arr += ((fbm3(xz / 150.0) - 0.5) * 90.0 + (vnoise(xz / 30.0) - 0.5) * 25.0) * gT;
+    }
     dt = uTime - arr;
     float inside = step(0.5 + (vnoise(xz / 60.0) - 0.5) * 0.35, at.b);
     float burned = step(0.0, dt) * inside * uFireOn;
     burnedAmt = burned;
     float sev = mix(fbm3(xz / 260.0 + 7.0), smoothstep(0.1, 0.75, info.b) * 0.85 + fbm3(xz / 90.0) * 0.15, uReal);
     vec3 scar = mix(vec3(0.27, 0.25, 0.24), vec3(0.45, 0.27, 0.21), smoothstep(0.35, 0.75, sev));
-    scar = mix(scar, vec3(0.20, 0.19, 0.19), smoothstep(0.6, 0.9, fbm3(xz / 55.0)));
+    scar = mix(scar, vec3(0.20, 0.19, 0.19), 0.45 * smoothstep(0.55, 0.9, fbm3(xz / 70.0)));
     scar = mix(scar, mix(vec3(0.50, 0.40, 0.31), vec3(0.15, 0.14, 0.14), smoothstep(0.15, 0.9, sev)), uReal);
     scar *= 0.55 + 0.75 * shade;
     // recently burned areas keep a reddish cast
-    scar = mix(scar, scar * vec3(1.35, 0.8, 0.65), (1.0 - smoothstep(0.0, 10.0, dt)) * 0.7);
+    scar = mix(scar, scar * vec3(1.3, 0.82, 0.68), (1.0 - smoothstep(0.0, 6.0, dt)) * 0.55);
     col = mix(col, scar, burned * uScar * 0.92 * (1.0 - water));
 
     // active front glow + embers
     // narrow flaming band with a smooth, drifting flicker (no per-cell blocks)
     float front = burned * (1.0 - smoothstep(0.0, 0.55, dt));
-    float fn = fbm3(xz / 45.0 + vec2(uClock * 0.35, -uClock * 0.2));
-    float fl = 0.62 + 0.38 * sin(uClock * 7.0 + fn * 14.0);
+    float fl = 0.8;
+    if (dt < 7.0) { float fn = fbm3(xz / 45.0 + vec2(uClock * 0.35, -uClock * 0.2)); fl = 0.62 + 0.38 * sin(uClock * 7.0 + fn * 14.0); }
     float edge = burned * (1.0 - smoothstep(0.0, 0.18, dt));
     vec3 glow = mix(vec3(1.0, 0.28, 0.05), vec3(1.0, 0.78, 0.32), edge);
     col = mix(col, glow, clamp(front * 0.85 * fl * uSpread, 0.0, 1.0));
@@ -815,6 +834,7 @@ export class World {
     const lin = !!this.renderer.extensions.get('OES_texture_float_linear');
     const tex = new THREE.DataTexture(d, FN, FN, THREE.RGBAFormat, THREE.FloatType);
     tex.magFilter = lin ? THREE.LinearFilter : THREE.NearestFilter; tex.minFilter = tex.magFilter;
+    U.uArrManual.value = lin ? 0 : 1; U.uArrN.value = FN;
     tex.needsUpdate = true;
     if (U.uArrTex.value) U.uArrTex.value.dispose();
     U.uArrTex.value = tex;

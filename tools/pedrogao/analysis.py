@@ -110,7 +110,9 @@ for k, t in enumerate(times):
                    'sm': r1(E['soil_moisture_0_to_7cm'][k], 3), 'rain': r1(E['precipitation'][k])})
 
 # ------------------------------------------------------------------ rasters on the 400² fire grid
-arr = np.fromfile(os.path.join(SRC, 'arrival.f32'), '<f4').reshape(FN, FN)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from arrival_fix import fix_arrival
+arr = fix_arrival(np.fromfile(os.path.join(SRC, 'arrival.f32'), '<f4').reshape(FN, FN), meta)   # same field the browser shows
 burned = arr < 900
 cos = np.fromfile(os.path.join(SRC, 'cos.u8'), np.uint8).reshape(FN, FN)
 dn_png = Image.open(os.path.join(SRC, 'dnbr.png')).convert('L').resize((FN, FN), Image.BOX)
@@ -211,7 +213,7 @@ deaths = sorted(fat, key=lambda f: f['t'])
 cum, c = [], 0
 for f in deaths: c += f['count']; cum.append([r1(f['t'], 3), c])
 
-area_t = meta['area']['t']; area_h = meta['area']['ha']
+area_t = list(np.arange(12, 144.01, 0.5)); area_h = [float((arr <= t).sum() * HA) for t in area_t]
 def area_at(t): return float(np.interp(t, area_t, area_h))
 growth = [[t, r1(area_at(t + 0.5) - area_at(t - 0.5), 0)] for t in np.arange(14.5, 144, 0.5)]
 peak = max(growth, key=lambda g: g[1])

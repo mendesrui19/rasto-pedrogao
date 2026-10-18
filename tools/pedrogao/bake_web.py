@@ -29,7 +29,9 @@ res[1:, 1:] = dm[1:, 1:] - dm[1:, :-1] - dm[:-1, 1:] + dm[:-1, :-1]
 b = res.astype('<i2').view(np.uint8).reshape(-1, 2)
 open(os.path.join(D, 'dem.z'), 'wb').write(zlib.compress(b[:, 0].tobytes() + b[:, 1].tobytes(), 9))
 
-arr = np.fromfile(os.path.join(SRC, 'arrival.f32'), '<f4')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from arrival_fix import fix_arrival   # causal, continuous arrival field (no ignition pop, plateaus or islands)
+arr = fix_arrival(np.fromfile(os.path.join(SRC, 'arrival.f32'), '<f4').reshape(meta['fn'], meta['fn']), meta).ravel()
 a16 = np.where(arr >= 900, 65535, np.clip(np.round(arr * 60), 0, 65534)).astype('<u2')
 open(os.path.join(D, 'arrival.z'), 'wb').write(zlib.compress(a16.tobytes(), 9))
 for g in ['fuel', 'cos']:
