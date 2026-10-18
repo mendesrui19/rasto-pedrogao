@@ -130,11 +130,12 @@ void main(){
     // same raggedness where the fire crawls or runs, and time-independent so burned ground never flickers back
     // (only near the front: long-burned ground does not need it, which keeps the shader cheap)
     float arr = at.r;
+    float gT = 0.004;                       // hours per metre (local arrival gradient), refined near the front
     if (uTime - at.r < 3.0) {
       vec2 tu = (xz + warp + uHalf) / (2.0 * uHalf); float tx = 1.0 / uArrN;
       float gx = arrSample(tu + vec2(tx, 0.0)).r - arrSample(tu - vec2(tx, 0.0)).r;
       float gz = arrSample(tu + vec2(0.0, tx)).r - arrSample(tu - vec2(0.0, tx)).r;
-      float gT = min(length(vec2(gx, gz)) / (2.0 * (2.0 * uHalf) * tx), 0.01);   // hours per metre, capped at plateau edges
+      gT = clamp(length(vec2(gx, gz)) / (2.0 * (2.0 * uHalf) * tx), 0.00015, 0.01);   // capped at plateau edges
       arr += ((fbm3(xz / 150.0) - 0.5) * 90.0 + (vnoise(xz / 30.0) - 0.5) * 25.0) * gT;
     }
     dt = uTime - arr;
@@ -146,20 +147,31 @@ void main(){
     scar = mix(scar, vec3(0.20, 0.19, 0.19), 0.45 * smoothstep(0.55, 0.9, fbm3(xz / 70.0)));
     scar = mix(scar, mix(vec3(0.50, 0.40, 0.31), vec3(0.15, 0.14, 0.14), smoothstep(0.15, 0.9, sev)), uReal);
     scar *= 0.55 + 0.75 * shade;
-    // recently burned areas keep a reddish cast
-    scar = mix(scar, scar * vec3(1.3, 0.82, 0.68), (1.0 - smoothstep(0.0, 6.0, dt)) * 0.55);
     col = mix(col, scar, burned * uScar * 0.92 * (1.0 - water));
 
-    // active front glow + embers
-    // narrow flaming band with a smooth, drifting flicker (no per-cell blocks)
-    float front = burned * (1.0 - smoothstep(0.0, 0.55, dt));
-    float fl = 0.8;
-    if (dt < 7.0) { float fn = fbm3(xz / 45.0 + vec2(uClock * 0.35, -uClock * 0.2)); fl = 0.62 + 0.38 * sin(uClock * 7.0 + fn * 14.0); }
-    float edge = burned * (1.0 - smoothstep(0.0, 0.18, dt));
-    vec3 glow = mix(vec3(1.0, 0.28, 0.05), vec3(1.0, 0.78, 0.32), edge);
-    col = mix(col, glow, clamp(front * 0.85 * fl * uSpread, 0.0, 1.0));
-    float emb = burned * (1.0 - smoothstep(0.5, 7.0, dt)) * step(0.82, vnoise(xz / 9.0 + floor(uClock * 2.0) * 0.0));
-    col = mix(col, vec3(0.95, 0.28, 0.08), emb * 0.55 * uSpread * fl);
+    float fl = 0.8, fn = 0.5;
+    if (dt < 7.0 && dt > -0.4) { fn = fbm3(xz / 45.0 + vec2(uClock * 0.35, -uClock * 0.2)); fl = 0.62 + 0.38 * sin(uClock * 7.0 + fn * 14.0); }
+    float spread = uSpread * (1.0 - water);
+    // smouldering ground behind the front: glowing red-orange that cools to charcoal over ~5 h
+    float smoulder = burned * (1.0 - smoothstep(0.3, 5.0, dt)) * smoothstep(0.0, 0.35, dt);
+    float hot = smoothstep(0.38, 0.75, fn);   // drifting hot patches (reuses the flicker noise)
+    vec3 ember = mix(vec3(0.6, 0.12, 0.03), vec3(1.0, 0.42, 0.07), hot) * (0.8 + 0.3 * fl);
+    col = mix(col, ember, smoulder * 0.7 * spread);
+    col += vec3(0.5, 0.14, 0.02) * hot * smoulder * smoulder * 0.45 * spread * fl;
+    // flaming front, sized in metres (time / local gradient) so fast runs do not smear into wide bands:
+    // a ~25 m yellow-orange leading edge, ~180 m of flame fading from orange to deep red, additive glow
+    float dm = dt / gT;                      // metres behind (+) or ahead of (−) the front
+    float front = burned * (1.0 - smoothstep(0.0, 180.0, dm)) * (1.0 - smoothstep(0.4, 1.2, dt));
+    float edge = burned * (1.0 - smoothstep(0.0, 25.0, dm));
+    vec3 glow = mix(mix(vec3(0.82, 0.1, 0.02), vec3(1.0, 0.42, 0.05), 1.0 - smoothstep(20.0, 160.0, dm)), vec3(1.0, 0.72, 0.22), edge);
+    col = mix(col, glow, clamp(front * 0.95 * fl * spread, 0.0, 1.0));
+    col += glow * front * fl * 0.28 * spread;
+    // heat haze over the ~120 m of unburned ground just ahead of the front
+    float ahead = (1.0 - burned) * inside * uFireOn * (1.0 - smoothstep(0.0, 120.0, -dm)) * step(-0.6, dt);
+    col += vec3(1.0, 0.42, 0.08) * ahead * ahead * 0.45 * fl * spread;
+    // embers
+    float emb = burned * (1.0 - smoothstep(0.5, 7.0, dt)) * step(0.8, vnoise(xz / 9.0));
+    col = mix(col, vec3(1.0, 0.45, 0.1), emb * 0.75 * spread * fl);
     frontAmt = front;
 
     // isochrones (modeled spread) every 6 h
@@ -254,7 +266,11 @@ void main(){
   col = mix(col, charred, burned * min(1.0, uScar + 0.25));
   float fl = 0.6 + 0.4 * sin(uClock * 12.0 + hash12(vXZ) * 30.0);
   float burning = burned * (1.0 - smoothstep(0.0, 0.9, dt));
-  col = mix(col, mix(vec3(1.0, 0.3, 0.04), vec3(1.0, 0.75, 0.3), vY) * fl, burning * 0.85 * uSpread);
+  vec3 flame = mix(vec3(1.0, 0.28, 0.03), vec3(1.0, 0.85, 0.45), clamp(vY, 0.0, 1.0)) * fl;
+  col = mix(col, flame, burning * 0.92 * uSpread);
+  col += flame * burning * 0.45 * uSpread;
+  float glowing = burned * smoothstep(0.9, 1.2, dt) * (1.0 - smoothstep(1.2, 4.0, dt));
+  col += vec3(0.55, 0.12, 0.02) * glowing * (1.0 - vY) * 0.6 * uSpread * fl;
   float dist = length(vView);
   float fogF = 1.0 - exp(-pow(dist * uFogDensity, 1.6));
   col = mix(col, uFogColor, fogF * 0.92);
