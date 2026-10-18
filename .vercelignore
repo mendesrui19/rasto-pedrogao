@@ -1,0 +1,5 @@
+.claude
+tools
+*.md
+.DS_Store
+package.json

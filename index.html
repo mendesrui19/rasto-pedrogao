@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FireTrace — Pedrógão Grande 2017</title>
+<meta name="description" content="Reconstrução ilustrativa e interativa do incêndio de Pedrógão Grande (17–22 junho 2017) a partir de relatórios oficiais (CTI, ADAI), dados do ICNF e satélite." />
+<meta property="og:title" content="FireTrace — Pedrógão Grande 2017" />
+<meta property="og:description" content="Reconstrução ilustrativa do incêndio de Pedrógão Grande com dados oficiais e de satélite." />
+<meta property="og:type" content="website" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/app.css" />
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app">
+  <!-- ================= TOP BAR ================= -->
+  <header id="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 20"><path d="M0 20 L11 4 L16 11 L20 6 L32 20 Z" fill="#d4501f"/><path d="M11 4 L14.5 9 L12 8 L9.5 10 L8 8.4Z" fill="#f4c19a"/><path d="M20 6 L23 10 L21 9.3 L19.3 10.5 L18.2 8.6Z" fill="#f4c19a"/></svg>
+      <span class="brand-name">FireTrace</span>
+      <span class="brand-sep"></span>
+      <span class="brand-sub">Wildfire Forensic Analysis</span>
+    </div>
+    <span class="tb-div"></span>
+    <button class="tb-btn incident-select" data-menu="incidentMenu"><b>Ridgeview Incident</b><i class="ic" data-ic="chev"></i></button>
+    <span class="tb-text">San Gabriel Mountains, CA</span>
+    <button class="tb-btn date-btn" data-menu="dateMenu"><i class="ic" data-ic="cal"></i><span>Aug 14, 2024 – Aug 18, 2024</span></button>
+    <div class="seg mode-tabs">
+      <button data-mode="incident" class="on"><i class="ic" data-ic="map"></i>Incident</button>
+      <button data-mode="drones"><i class="ic" data-ic="drone"></i>Drones<span class="badge" id="badgeDrones">6</span></button>
+      <button data-mode="resources"><i class="ic" data-ic="truck"></i>Resources<span class="badge" id="badgeRes">6</span></button>
+    </div>
+    <button class="tb-btn menu-btn" data-menu="viewMenu"><i class="ic" data-ic="layout"></i>View<i class="ic sm" data-ic="chev"></i></button>
+    <button class="tb-btn menu-btn" data-menu="analysisMenu"><i class="ic" data-ic="chart"></i>Analysis<i class="ic sm" data-ic="chev"></i></button>
+    <button class="tb-btn menu-btn" data-menu="shareMenu"><i class="ic" data-ic="share"></i>Share<i class="ic sm" data-ic="chev"></i></button>
+    <div class="seg lang-seg" title="Language / Idioma" data-no-i18n><button data-lang="en">EN</button><button data-lang="pt">PT</button></div>
+    <button class="tb-icon" id="btnSettings" title="Settings"><i class="ic" data-ic="gear"></i></button>
+    <span class="tb-spacer"></span>
+    <button class="tb-icon" id="btnCollapse" title="Toggle side panel"><i class="ic" data-ic="minus"></i></button>
+  </header>
+
+  <!-- ================= MAIN ================= -->
+  <div id="main">
+    <div id="left">
+      <div id="viewport">
+        <canvas id="gl"></canvas>
+        <div id="labels"></div>
+        <button id="sideToggle" title="Panel"><i class="ic" data-ic="layout"></i><span>Panel</span></button>
+        <div id="pip" class="hidden">
+          <div class="pip-view" id="pipView">
+            <canvas id="hud"></canvas>
+            <div class="pip-flash"></div>
+          </div>
+          <div class="pip-bar">
+            <span class="pip-name"><b id="pipId">FT-01</b> <span id="pipName">Kestrel</span></span>
+            <div class="pip-seg"><button data-sensor="eo">EO</button><button data-sensor="ir">IR</button></div>
+            <button class="pip-pal" id="pipPalette">Ironbow</button>
+            <span class="flex1"></span>
+            <button class="pip-ic" id="pipZoomOut" title="Zoom out"><i class="ic" data-ic="minus"></i></button>
+            <span class="pip-zoom" id="pipZoom">1.0×</span>
+            <button class="pip-ic" id="pipZoomIn" title="Zoom in"><i class="ic" data-ic="plus"></i></button>
+            <button class="pip-ic" id="pipSnap" title="Capture still to Evidence"><i class="ic" data-ic="focus"></i></button>
+            <button class="pip-ic" id="pipExpand" title="Full camera view"><i class="ic" data-ic="expand"></i></button>
+            <button class="pip-ic" id="pipClose" title="Close feed"><i class="ic" data-ic="x"></i></button>
+          </div>
+        </div>
+        <button id="compass" title="Reset north"><svg viewBox="0 0 40 40"><text x="20" y="7.5" text-anchor="middle">N</text><path d="M20 10 L26 29 L20 25 L14 29 Z" /></svg></button>
+        <div id="gridLabels"></div>
+        <div id="tooltip" class="hidden"></div>
+        <div id="attrib" class="hidden">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · Copernicus Sentinel-2 (2017) · NASA FIRMS · ICNF</div>
+        <div id="unitHud" class="hidden"></div>
+        <div id="mapCtl">
+          <div class="scalebar"><div class="sb-nums"><span>0</span><span id="sbMid">250</span><span id="sbEnd">500 m</span></div><div class="sb-bar"><i></i><i></i></div></div>
+          <div class="seg dark" id="dimSeg"><button data-dim="2d">2D</button><button data-dim="3d" class="on">3D</button></div>
+          <button class="mc-btn" id="zoomBtn"><span id="zoomVal">2.5×</span><i class="ic sm" data-ic="chev"></i></button>
+          <button class="mc-btn sq" id="fsBtn" title="Fullscreen"><i class="ic" data-ic="fullscreen"></i></button>
+        </div>
+        <div id="measureBar" class="hidden"><span id="measureText">Click on the terrain to add points</span><button id="measureDone">Done</button><button id="measureCancel">Cancel</button></div>
+        <div id="loading"><div class="ld-card"><svg class="logo" viewBox="0 0 32 20"><path d="M0 20 L11 4 L16 11 L20 6 L32 20 Z" fill="#d4501f"/></svg><div class="ld-title">FireTrace</div><div class="ld-step" id="ldStep">Loading…</div><div class="ld-bar"><i id="ldBar"></i></div></div></div>
+      </div>
+
+      <!-- ================= BOTTOM ================= -->
+      <div id="bottom">
+        <div id="bottomMain">
+          <div id="timeline">
+            <div class="tl-left">
+              <div class="panel-title">Timeline</div>
+              <div class="tl-ctl">
+                <button class="tl-b" id="tlPlay" title="Play (Space)"><i class="ic" data-ic="play"></i></button>
+                <button class="tl-b on" id="tlPause" title="Pause (Space)"><i class="ic" data-ic="pause"></i></button>
+                <button class="tl-b" id="tlStep" title="Next event"><i class="ic" data-ic="skip"></i></button>
+                <button class="tl-b sp" id="tlSpeed"><span>1×</span><i class="ic sm" data-ic="chev"></i></button>
+              </div>
+            </div>
+            <div class="tl-right">
+              <div class="tl-range" id="tlRange">Aug 14, 14:00 – Aug 18, 12:00</div>
+              <div class="tl-track" id="tlTrack">
+                <div class="tl-band" id="tlBand"></div>
+                <div class="tl-rail"></div>
+                <div class="tl-fill" id="tlFill"></div>
+                <div class="tl-markers" id="tlMarkers"></div>
+                <div class="tl-thumb" id="tlThumb"><span class="tl-tip" id="tlTip">Aug 15, 16:00</span></div>
+              </div>
+              <div class="tl-axis" id="tlAxis"></div>
+            </div>
+          </div>
+          <div id="charts">
+            <div class="chart" data-chart="0"><div class="ch-h"><span class="ch-title"></span><span class="ch-meta"></span><button class="ch-menu" title="Chart options">⋮</button></div><canvas></canvas></div>
+            <div class="chart" data-chart="1"><div class="ch-h"><span class="ch-title"></span><span class="ch-meta"></span><button class="ch-menu" title="Chart options">⋮</button></div><canvas></canvas></div>
+            <div class="chart" data-chart="2"><div class="ch-h"><span class="ch-title"></span><span class="ch-meta"></span><button class="ch-menu" title="Chart options">⋮</button></div><canvas></canvas></div>
+          </div>
+        </div>
+        <div id="feed">
+          <div class="feed-h"><span class="panel-title" id="feedTitle">Key Events</span><span id="feedAction"></span></div>
+          <div class="feed-list" id="feedList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= SIDEBAR ================= -->
+    <aside id="side">
+      <div id="sideIncident" class="side-mode">
+        <div class="card tabs-card">
+          <div class="tabs" id="sideTabs">
+            <button data-tab="layers" class="on">Layers</button><button data-tab="analysis">Analysis</button><button data-tab="evidence">Evidence</button><button data-tab="notes">Notes</button>
+          </div>
+          <div class="tab-body" id="tab-layers"></div>
+          <div class="tab-body hidden" id="tab-analysis"></div>
+          <div class="tab-body hidden" id="tab-evidence"></div>
+          <div class="tab-body hidden" id="tab-notes"></div>
+        </div>
+        <div class="card" id="overviewCard">
+          <div class="card-h"><b>Incident Overview</b><button class="link" id="ovEdit">Edit</button></div>
+          <div class="kv" id="overview"></div>
+        </div>
+        <div class="card" id="weatherCard">
+          <div class="card-h"><b>Weather &amp; Fire Behavior</b><span class="muted" id="wxWhere">(at cursor)</span><button class="ch-menu" id="wxMenu">⋮</button></div>
+          <div class="wx" id="wx"></div>
+        </div>
+      </div>
+
+      <div id="sideDrones" class="side-mode hidden">
+        <div class="card">
+          <div class="card-h"><b>Drone Fleet</b><span class="muted" id="fleetCount">· 6 of 6 airborne</span><span class="live"><i></i>LIVE</span></div>
+          <div class="list" id="droneList"></div>
+        </div>
+        <div class="card" id="droneDetail"></div>
+      </div>
+
+      <div id="sideResources" class="side-mode hidden">
+        <div class="card">
+          <div class="card-h"><b>Resources</b><span class="muted" id="resCount">· 13 units · 13 active</span><span class="live"><i></i>LIVE</span></div>
+          <div class="stats4" id="resStats"></div>
+          <div class="list" id="resList"></div>
+        </div>
+        <div class="card" id="resDetail"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div id="sideScrim"></div>
+<div id="menus"></div>
+<div id="toasts"></div>
+<div id="modal" class="hidden"><div class="modal-card" id="modalCard"></div></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
