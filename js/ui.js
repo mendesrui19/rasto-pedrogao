@@ -27,6 +27,7 @@ const LAYER_THUMBS = {
   roads: 'linear-gradient(135deg,#ebe7e0,#d0cbc2)',
   admin: 'linear-gradient(135deg,#e6e2da,#cfcac0)',
   munis: 'repeating-linear-gradient(135deg,#e9e2f5 0 4px,#8a6cc0 4px 6px)',
+  closures: 'linear-gradient(90deg,#d21e1e 0 28%,#fff 28%)',
 };
 const NO_SLIDER = ['supp', 'structures', 'roads', 'admin'];
 
@@ -61,6 +62,12 @@ export function init(a) {
   $$('[data-menu]').forEach((b) => b.addEventListener('click', (e) => openTopMenu(b.dataset.menu, e.currentTarget)));
   $('#btnSettings').addEventListener('click', openSettings);
   $('#btnCollapse').addEventListener('click', () => { document.body.classList.toggle('side-collapsed'); });
+  // road-closure toggle on the map (mirrors the layer of the same name)
+  const cb = $('#closBtn');
+  if (cb) {
+    if (!R()) cb.classList.add('hidden');
+    cb.addEventListener('click', () => { const L = S.layers.closures; if (!L) return; L.on = !L.on; renderLayers(); app.applyLayers(); toast(L.on ? DASH.L('Road closures shown', 'Cortes de estrada visíveis') : DASH.L('Road closures hidden', 'Cortes de estrada ocultos')); });
+  }
   // timeline controls
   $('#tlPlay').addEventListener('click', () => app.togglePlay(true));
   $('#tlPause').addEventListener('click', () => app.togglePlay(false));

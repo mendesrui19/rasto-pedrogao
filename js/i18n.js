@@ -22,7 +22,7 @@ const PT = {
   'Ignition Probability': 'Probabilidade de ignição', 'Ignition Points (SGIF)': 'Pontos de ignição (SGIF)', 'Weather (Wind Vectors)': 'Meteorologia (vento)',
   'Weather (ERA5 Wind)': 'Meteorologia (vento ERA5)', 'Suppression (Drops & Line)': 'Supressão (descargas e linha)', 'Air Drops (illustrative)': 'Descargas aéreas (ilustrativo)',
   'Structures': 'Estruturas', 'Roads & Trails': 'Estradas e trilhos', 'Administrative Boundaries': 'Limites administrativos', 'Villages (OSM)': 'Aldeias (OSM)', 'Roads (OSM)': 'Estradas (OSM)',
-  'Satellite Hotspots (VIIRS/MODIS)': 'Focos de calor de satélite (VIIRS/MODIS)', 'CTI: Fatalities · PCO · Road Closures': 'CTI: vítimas · PCO · cortes de estrada',
+  'Satellite Hotspots (VIIRS/MODIS)': 'Focos de calor de satélite (VIIRS/MODIS)', 'CTI: Fatalities · PCO · Road Closures': 'CTI: vítimas · PCO · cortes de estrada', 'CTI: Fatalities · Command Post': 'CTI: vítimas · posto de comando', 'Road closures (CTI)': 'Cortes de estrada (CTI)', 'Road closures': 'Cortes de estrada', 'Show or hide road closures': 'Mostrar ou ocultar os cortes de estrada',
   // overview / weather
   'Incident Overview': 'Resumo do incidente', 'Edit': 'Editar', 'Save': 'Guardar', 'Incident Name': 'Nome', 'Incident ID': 'ID do incidente', 'Location': 'Localização',
   'Start (Est.)': 'Início (est.)', 'End': 'Fim', 'Total Acres': 'Área total', 'Cause (Prelim.)': 'Causa (prelim.)', 'Analysis Status': 'Estado da análise', 'In Progress': 'Em curso',

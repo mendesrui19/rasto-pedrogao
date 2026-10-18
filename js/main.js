@@ -125,7 +125,7 @@ function applyRealState(rc) {
   state.layers.roads.name = 'Roads (OSM)';
   const L = state.layers; const keep = { ...L };
   for (const k of Object.keys(L)) delete L[k];
-  Object.assign(L, { terrain: keep.terrain, imagery: keep.imagery, scar: keep.scar, spread: keep.spread, cti: { on: true, op: 1, name: 'CTI: Fatalities · PCO · Road Closures' }, hotspots: { on: true, op: 1, name: 'Satellite Hotspots (VIIRS/MODIS)' }, munis: { on: false, op: 1, name: 'Municipal boundaries (OSM)' }, ign: keep.ign, wind: keep.wind, supp: keep.supp, structures: keep.structures, roads: keep.roads });
+  Object.assign(L, { terrain: keep.terrain, imagery: keep.imagery, scar: keep.scar, spread: keep.spread, cti: { on: true, op: 1, name: 'CTI: Fatalities · Command Post' }, closures: { on: false, op: 1, name: 'Road closures (CTI)' }, hotspots: { on: true, op: 1, name: 'Satellite Hotspots (VIIRS/MODIS)' }, munis: { on: false, op: 1, name: 'Municipal boundaries (OSM)' }, ign: keep.ign, wind: keep.wind, supp: keep.supp, structures: keep.structures, roads: keep.roads });
   L.supp.name = 'Air Drops (illustrative)';
   const TH = { Report: 'linear-gradient(135deg,#dfe4e8,#a9b2ba)', Paper: 'linear-gradient(135deg,#efe7da,#d8ccb9)', Data: 'linear-gradient(180deg,#e6eef3,#9fb7c8)', Sat: 'linear-gradient(135deg,#1b0638,#6a1b8a 45%,#f08c2b 75%,#fff2b0)' };
   state.evidence = [
@@ -617,7 +617,7 @@ function buildLabels() {
       const ctiOn = () => state.labels && state.layers.cti && state.layers.cti.on && state.mode !== 'drones';
       C2.fatalities.forEach((f) => addLabel(`<i>${f.count}</i><span>${f.name}</span>`, 'lbl-fatal', gp(f.x, f.z, 15), { anchor: 'translate(-11px,-50%)', when: () => ctiOn() && state.time >= f.t }));
       C2.pco.forEach((p) => addLabel(`<i>P</i>${p.name}`, 'lbl-base lbl-pco', gp(p.x, p.z, 10), { anchor: 'translate(-9px,-50%)', when: () => ctiOn() && state.time >= p.t0 && state.time < p.t1 }));
-      C2.closures.forEach((c) => addLabel(`<b>⛔ ${fmtHM(c.t)}</b> ${c.name}`, 'lbl-closure', gp(c.x, c.z, 8), { anchor: 'translate(-6px,-50%)', when: () => ctiOn() && state.time >= c.t && state.time < 4 * 24 }));
+      C2.closures.forEach((c) => addLabel(`<b>⛔ ${fmtHM(c.t)}</b> ${c.name}`, 'lbl-closure', gp(c.x, c.z, 8), { anchor: 'translate(-6px,-50%)', when: () => state.labels && state.layers.closures?.on && state.mode !== 'drones' && state.time >= c.t && state.time < 4 * 24 }));
     }
     app.real.extraIgnitions.forEach((g) => addLabel(`<span class="dot" style="width:10px;height:10px"></span><span class="lbl-chip">Ignição · ${g.name} · ${fmtHM(g.t)}</span>`, 'lbl-ign', gp(g.x, g.z, 20), { anchor: 'translate(-6px,-50%)', when: () => igWhen() && state.time >= g.t - 0.01 }));
     app.real.meta.ignitions.forEach((g) => addLabel(`<span class="dot"></span><span class="lbl-chip">Ignição · ${g.name}<br>${fmtTime(g.t).replace(',', '')} · alerta ${fmtHM(g.alert)}</span>`, 'lbl-ign', gp(g.x, g.z, 25), { anchor: 'translate(-8px,-50%)', when: igWhen }));
@@ -678,6 +678,7 @@ app.drawOverlay = drawOverlay;
 // ------------------------------------------------------------------ layers -> uniforms
 export function applyLayers() {
   const L = state.layers;
+  $('#closBtn')?.classList.toggle('on', !!L.closures?.on);
   U.uImagery.value = L.imagery.on ? L.imagery.op : 0;
   U.uShadeAmt.value = L.terrain.on ? 1 : 0.6;
   U.uScar.value = L.scar.on ? L.scar.op : 0;
