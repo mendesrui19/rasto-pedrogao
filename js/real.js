@@ -37,7 +37,7 @@ export async function loadBitmap(url) {
   return createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
 }
 
-const DATA_V = 3;
+const DATA_V = 4;
 export async function loadReal(id, progress = () => {}) {
   const base = `data/${id}/`;
   const u = (f) => `${base}${f}?v=${DATA_V}`; // bump DATA_V whenever the baked files change (they are cached for a day)
